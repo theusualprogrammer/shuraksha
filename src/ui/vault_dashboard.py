@@ -2,28 +2,12 @@
 # Shuraksha - Real Vault Dashboard
 # File: src/ui/vault_dashboard.py
 # -----------------------------------------------
-# This is the REAL vault. Only accessible after
-# the correct DOB is entered on the BODMAS screen.
-#
-# Features on this screen:
-#   - Encrypted file storage and retrieval
-#   - Add any file to the vault (encrypts it)
-#   - Open / export files from the vault
-#   - Secure delete files from the vault
-#   - Password credential manager
-#   - Secure notes
-#   - Access log viewer
-#   - Panic button (Ctrl+Shift+X) to instantly lock
-#   - Auto-lock after inactivity
-#   - Anti-screenshot protection notice
-# -----------------------------------------------
 
 import sys
 import os
 import json
 import shutil
 import secrets
-import hashlib
 from pathlib import Path
 from datetime import datetime
 
@@ -32,30 +16,38 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 from PyQt6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout,
     QHBoxLayout, QLabel, QPushButton, QFrame,
-    QScrollArea, QGridLayout, QLineEdit, QTextEdit,
+    QScrollArea, QLineEdit, QTextEdit,
     QFileDialog, QMessageBox, QStackedWidget,
-    QSizePolicy, QInputDialog
+    QInputDialog
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 
 from src.core.crypto import encrypt_json, decrypt_json
 
+# Import security module safely
+# If it fails for any reason the app still works
+try:
+    from src.core.security import security
+    SECURITY_AVAILABLE = True
+except Exception:
+    security           = None
+    SECURITY_AVAILABLE = False
+
 # -----------------------------------------------
 # PATHS
 # -----------------------------------------------
-APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
-VAULT_DIR      = APP_DATA_DIR / 'vault'
-FILES_DIR      = VAULT_DIR / 'files'
-META_FILE      = VAULT_DIR / 'meta.dat'
-CREDS_FILE     = VAULT_DIR / 'creds.dat'
-NOTES_FILE     = VAULT_DIR / 'notes.dat'
-LOG_FILE       = VAULT_DIR / 'access.log'
+APP_DATA_DIR = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
+VAULT_DIR    = APP_DATA_DIR / 'vault'
+FILES_DIR    = VAULT_DIR / 'files'
+META_FILE    = VAULT_DIR / 'meta.dat'
+CREDS_FILE   = VAULT_DIR / 'creds.dat'
+NOTES_FILE   = VAULT_DIR / 'notes.dat'
+LOG_FILE     = VAULT_DIR / 'access.log'
 
 # -----------------------------------------------
 # SETTINGS
 # -----------------------------------------------
-# Auto-lock after this many seconds of inactivity
 AUTO_LOCK_SECONDS = 300
 
 # -----------------------------------------------
@@ -204,7 +196,7 @@ GLOBAL_STYLE = f"""
 
 
 # -----------------------------------------------
-# HELPER FUNCTIONS
+# HELPERS
 # -----------------------------------------------
 def mk(text, color=C_WHITE, size=13, bold=False,
        mono=False, wrap=False, align=None):
@@ -236,33 +228,27 @@ def hline(color=C_BORDER):
 def write_log(entry: str):
     """
     Append a timestamped entry to the access log file.
-    The log records every login, file operation, and
-    credential access with a timestamp.
+    This function is also called by security.py so it
+    must not import anything from security.py to avoid
+    circular imports.
     """
     try:
         LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
+        ts = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
         with open(LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"[{timestamp}]  {entry}\n")
+            f.write(f"[{ts}]  {entry}\n")
     except Exception:
         pass
 
 
 # -----------------------------------------------
-# VAULT FILE OPERATIONS
+# VAULT MANAGER
 # -----------------------------------------------
 class VaultManager:
     """
     Handles all encrypted file operations.
-
-    All files added to the vault are:
-        1. Read from disk as bytes
-        2. Encrypted with AES-256-GCM
-        3. Stored in FILES_DIR with a random name
-        4. Metadata (original name, size, type) stored
-           separately in meta.dat (also encrypted)
-
-    No plaintext file data ever sits on disk unencrypted.
+    All files are encrypted with AES-256-GCM before
+    being stored. No plaintext ever sits on disk.
     """
 
     def __init__(self, master_password: str):
@@ -270,11 +256,7 @@ class VaultManager:
         FILES_DIR.mkdir(parents=True, exist_ok=True)
 
     def load_meta(self) -> list:
-        """
-        Load the file metadata index.
-        Returns a list of dicts, one per stored file.
-        Each dict has: id, name, size, added, type
-        """
+        """Load the file metadata index."""
         if not META_FILE.exists():
             return []
         try:
@@ -286,7 +268,7 @@ class VaultManager:
             return []
 
     def save_meta(self, files: list):
-        """Save the file metadata index back to disk."""
+        """Save the file metadata index."""
         try:
             enc = encrypt_json({'files': files}, self.password)
             with open(META_FILE, 'w') as f:
@@ -295,28 +277,19 @@ class VaultManager:
             raise Exception(f"Failed to save metadata: {e}")
 
     def add_file(self, source_path: Path) -> dict:
-        """
-        Encrypt and store a file in the vault.
-        Returns the metadata dict for the new file.
-        """
-        # Read the file as bytes
-        data = source_path.read_bytes()
-
-        # Generate a random vault ID for this file
+        """Encrypt and store a file in the vault."""
+        data     = source_path.read_bytes()
         vault_id = secrets.token_hex(16)
 
-        # Encrypt the raw bytes by wrapping in a dict
         enc = encrypt_json(
             {'data': data.hex(), 'name': source_path.name},
             self.password
         )
 
-        # Save to vault files directory
         dest = FILES_DIR / vault_id
         with open(dest, 'w') as f:
             json.dump(enc, f)
 
-        # Build metadata entry
         meta = {
             'id'   : vault_id,
             'name' : source_path.name,
@@ -325,7 +298,6 @@ class VaultManager:
             'type' : source_path.suffix.lower() or 'file',
         }
 
-        # Add to index
         files = self.load_meta()
         files.append(meta)
         self.save_meta(files)
@@ -333,12 +305,8 @@ class VaultManager:
         write_log(f"FILE_ADDED  {source_path.name}")
         return meta
 
-    def export_file(self, vault_id: str,
-                    dest_dir: Path) -> Path:
-        """
-        Decrypt a file and export it to dest_dir.
-        Returns the path of the exported file.
-        """
+    def export_file(self, vault_id: str, dest_dir: Path) -> Path:
+        """Decrypt and export a file."""
         vault_path = FILES_DIR / vault_id
         if not vault_path.exists():
             raise Exception("Vault file not found.")
@@ -349,35 +317,28 @@ class VaultManager:
         data_dict = decrypt_json(enc, self.password)
         raw       = bytes.fromhex(data_dict['data'])
         name      = data_dict['name']
-
-        out_path = dest_dir / name
+        out_path  = dest_dir / name
         out_path.write_bytes(raw)
 
         write_log(f"FILE_EXPORTED  {name}")
         return out_path
 
     def delete_file(self, vault_id: str):
-        """
-        Securely delete a file from the vault.
-        Overwrites the encrypted file with random bytes
-        before deleting to prevent data recovery.
-        """
+        """Securely delete a file with 3-pass overwrite."""
         vault_path = FILES_DIR / vault_id
         if vault_path.exists():
-            # Overwrite with random data (3 passes)
             size = vault_path.stat().st_size
             for _ in range(3):
                 vault_path.write_bytes(secrets.token_bytes(size))
             vault_path.unlink()
 
-        # Remove from metadata
         files = self.load_meta()
         files = [f for f in files if f['id'] != vault_id]
         self.save_meta(files)
         write_log(f"FILE_DELETED  {vault_id}")
 
     def load_creds(self) -> list:
-        """Load saved credentials from the vault."""
+        """Load saved credentials."""
         if not CREDS_FILE.exists():
             return []
         try:
@@ -389,13 +350,13 @@ class VaultManager:
             return []
 
     def save_creds(self, creds: list):
-        """Save credentials back to the vault."""
+        """Save credentials."""
         enc = encrypt_json({'creds': creds}, self.password)
         with open(CREDS_FILE, 'w') as f:
             json.dump(enc, f)
 
     def load_notes(self) -> str:
-        """Load the secure notes content."""
+        """Load secure notes content."""
         if not NOTES_FILE.exists():
             return ""
         try:
@@ -426,11 +387,7 @@ class VaultManager:
 # FILE ROW WIDGET
 # -----------------------------------------------
 class FileRow(QWidget):
-    """
-    A single row in the vault file list.
-    Shows icon, name, size, date added.
-    Has Export and Delete buttons.
-    """
+    """A single row in the vault file list."""
 
     export_requested = pyqtSignal(str)
     delete_requested = pyqtSignal(str)
@@ -453,23 +410,19 @@ class FileRow(QWidget):
         h.setContentsMargins(20, 0, 16, 0)
         h.setSpacing(16)
 
-        # File type icon
-        icon = self._get_icon(meta.get('type', ''))
-        icon_lbl = QLabel(icon)
+        icon_lbl = QLabel(self._get_icon(meta.get('type', '')))
         icon_lbl.setStyleSheet(
             "font-size:20px;background:transparent;"
         )
         icon_lbl.setFixedWidth(28)
         h.addWidget(icon_lbl)
 
-        # File name
         name_lbl = mk(meta['name'], C_WHITE, 13, bold=True)
         name_lbl.setMinimumWidth(200)
         h.addWidget(name_lbl)
 
         h.addStretch()
 
-        # Size
         size_lbl = mk(
             self._fmt_size(meta.get('size', 0)),
             C_DIM, 12, mono=True
@@ -478,13 +431,11 @@ class FileRow(QWidget):
         size_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         h.addWidget(size_lbl)
 
-        # Date added
         date_lbl = mk(meta.get('added', ''), C_DIM, 12, mono=True)
         date_lbl.setFixedWidth(160)
         date_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         h.addWidget(date_lbl)
 
-        # Export button
         exp_btn = QPushButton("EXPORT")
         exp_btn.setFixedSize(80, 32)
         exp_btn.setStyleSheet(BTN_GHOST)
@@ -493,7 +444,6 @@ class FileRow(QWidget):
         )
         h.addWidget(exp_btn)
 
-        # Delete button
         del_btn = QPushButton("DELETE")
         del_btn.setFixedSize(80, 32)
         del_btn.setStyleSheet(BTN_DANGER)
@@ -504,21 +454,21 @@ class FileRow(QWidget):
 
     def _get_icon(self, ext: str) -> str:
         icons = {
-            '.jpg': '🖼',  '.jpeg': '🖼', '.png': '🖼',
-            '.gif': '🖼',  '.bmp': '🖼',  '.webp': '🖼',
-            '.mp4': '🎬',  '.avi': '🎬',  '.mkv': '🎬',
-            '.mp3': '🎵',  '.wav': '🎵',  '.flac': '🎵',
+            '.jpg': '🖼', '.jpeg': '🖼', '.png': '🖼',
+            '.gif': '🖼', '.bmp': '🖼', '.webp': '🖼',
+            '.mp4': '🎬', '.avi': '🎬', '.mkv': '🎬',
+            '.mp3': '🎵', '.wav': '🎵', '.flac': '🎵',
             '.pdf': '📑',
-            '.doc': '📄',  '.docx': '📄', '.txt': '📄',
-            '.zip': '🗜',  '.rar': '🗜',
-            '.py':  '💻',  '.js':  '💻',
+            '.doc': '📄', '.docx': '📄', '.txt': '📄',
+            '.zip': '🗜', '.rar': '🗜',
+            '.py':  '💻', '.js':  '💻',
         }
         return icons.get(ext, '📎')
 
     def _fmt_size(self, b: int) -> str:
-        if b < 1024:       return f"{b} B"
-        if b < 1024**2:    return f"{b//1024} KB"
-        if b < 1024**3:    return f"{b//1024**2} MB"
+        if b < 1024:     return f"{b} B"
+        if b < 1024**2:  return f"{b//1024} KB"
+        if b < 1024**3:  return f"{b//1024**2} MB"
         return f"{b/1024**3:.1f} GB"
 
 
@@ -526,10 +476,7 @@ class FileRow(QWidget):
 # CREDENTIAL ROW WIDGET
 # -----------------------------------------------
 class CredRow(QWidget):
-    """
-    A single row in the credentials list.
-    Shows site, username, and a hidden password.
-    """
+    """A single row in the credentials list."""
 
     delete_requested = pyqtSignal(int)
 
@@ -551,45 +498,42 @@ class CredRow(QWidget):
         h.setContentsMargins(20, 0, 16, 0)
         h.setSpacing(16)
 
-        # Site
         site_lbl = mk(
             cred.get('site', ''), C_WHITE, 13, bold=True
         )
         site_lbl.setMinimumWidth(180)
         h.addWidget(site_lbl)
 
-        # Username
         user_lbl = mk(
             cred.get('username', ''), C_MID, 12, mono=True
         )
         user_lbl.setMinimumWidth(160)
         h.addWidget(user_lbl)
 
-        # Password (hidden by default)
         pwd = cred.get('password', '')
-        self.pwd_lbl = mk("●" * min(len(pwd), 16), C_DIM, 12, mono=True)
+        self.pwd_lbl = mk(
+            "●" * min(len(pwd), 16), C_DIM, 12, mono=True
+        )
         self.pwd_lbl.setMinimumWidth(140)
         h.addWidget(self.pwd_lbl)
 
         h.addStretch()
 
-        # Show / hide password button
+        self._pwd_visible = False
+        self._pwd_text    = pwd
+
         self.show_btn = QPushButton("SHOW")
         self.show_btn.setFixedSize(70, 30)
         self.show_btn.setStyleSheet(BTN_GHOST)
-        self._pwd_visible = False
-        self._pwd_text    = pwd
         self.show_btn.clicked.connect(self._toggle_pwd)
         h.addWidget(self.show_btn)
 
-        # Copy password to clipboard
         copy_btn = QPushButton("COPY")
         copy_btn.setFixedSize(70, 30)
         copy_btn.setStyleSheet(BTN_GHOST)
         copy_btn.clicked.connect(self._copy_pwd)
         h.addWidget(copy_btn)
 
-        # Delete
         del_btn = QPushButton("DEL")
         del_btn.setFixedSize(60, 30)
         del_btn.setStyleSheet(BTN_DANGER)
@@ -609,7 +553,9 @@ class CredRow(QWidget):
             )
             self.show_btn.setText("HIDE")
         else:
-            self.pwd_lbl.setText("●" * min(len(self._pwd_text), 16))
+            self.pwd_lbl.setText(
+                "●" * min(len(self._pwd_text), 16)
+            )
             self.pwd_lbl.setStyleSheet(
                 f"color:{C_DIM};font-size:12px;"
                 f"font-family:'Consolas','Courier New',monospace;"
@@ -618,12 +564,16 @@ class CredRow(QWidget):
             self.show_btn.setText("SHOW")
 
     def _copy_pwd(self):
+        """Copy password and schedule clipboard clear."""
         QApplication.clipboard().setText(self._pwd_text)
         # Auto-clear clipboard after 30 seconds
-        QTimer.singleShot(
-            30000,
-            lambda: QApplication.clipboard().setText("")
-        )
+        if SECURITY_AVAILABLE and security:
+            security.schedule_clipboard_clear(30)
+        else:
+            QTimer.singleShot(
+                30000,
+                lambda: QApplication.clipboard().setText("")
+            )
 
 
 # -----------------------------------------------
@@ -632,13 +582,14 @@ class CredRow(QWidget):
 class VaultDashboard(QMainWindow):
     """
     The real encrypted vault dashboard.
-    Only accessible after correct DOB entry on BODMAS screen.
+    Only accessible after correct DOB entry.
 
-    Sections:
-        Files       - encrypted file storage
-        Credentials - saved browser/app passwords
-        Notes       - encrypted private notepad
-        Log         - access history viewer
+    Security features active while vault is open:
+        - Print Screen key blocked
+        - Window excluded from screenshots
+        - Process scanner running in background
+        - Auto-lock after inactivity
+        - Panic lock on Ctrl+Shift+X
     """
 
     lock_requested = pyqtSignal()
@@ -665,16 +616,43 @@ class VaultDashboard(QMainWindow):
         self.setStyleSheet(GLOBAL_STYLE)
         self._build()
 
-        # Panic button: Ctrl+Shift+X instantly locks
+        # Panic button shortcut
         self.panic = QShortcut(
             QKeySequence("Ctrl+Shift+X"), self
         )
         self.panic.activated.connect(self._instant_lock)
 
-        # Log the vault open event
-        write_log(
-            f"VAULT_OPENED  operator:{self.username}"
-        )
+        # Log vault open
+        write_log(f"VAULT_OPENED  operator:{self.username}")
+
+        # Start security monitoring after vault opens
+        # Use a timer delay to ensure window handle is ready
+        QTimer.singleShot(500, self._start_security)
+
+    def _start_security(self):
+        """
+        Start security monitoring after the window
+        has fully loaded and the window handle exists.
+        """
+        try:
+            if SECURITY_AVAILABLE and security:
+                security.set_lock_callback(self._instant_lock)
+                security.start()
+                # Block window from appearing in screenshots
+                hwnd = int(self.winId())
+                security.block_screenshot_api(hwnd)
+        except Exception:
+            pass
+
+    def _stop_security(self):
+        """Stop security monitoring and unblock screenshots."""
+        try:
+            if SECURITY_AVAILABLE and security:
+                security.stop()
+                hwnd = int(self.winId())
+                security.unblock_screenshot_api(hwnd)
+        except Exception:
+            pass
 
     # -----------------------------------------------
     # LAYOUT
@@ -722,20 +700,17 @@ class VaultDashboard(QMainWindow):
         h = QHBoxLayout(bar)
         h.setContentsMargins(20, 0, 20, 0)
 
-        h.addWidget(mk("[  SHR  ]", C_CYAN, 11,
-                       bold=True, mono=True))
-        h.addWidget(mk("  //  ", C_GHOST, 11, mono=True))
+        h.addWidget(mk("[  SHR  ]", C_CYAN, 11, bold=True, mono=True))
+        h.addWidget(mk("  //  ",    C_GHOST, 11, mono=True))
         h.addWidget(mk("SECURE VAULT", C_DIM, 11, mono=True))
         h.addStretch()
 
-        # Operator name
         h.addWidget(mk(
             f"// operator:  {self.username}",
             C_DIM, 11, mono=True
         ))
         h.addSpacing(20)
 
-        # Panic lock button
         panic_btn = QPushButton("[ LOCK  Ctrl+Shift+X ]")
         panic_btn.setStyleSheet(
             f"QPushButton{{background:transparent;"
@@ -757,7 +732,6 @@ class VaultDashboard(QMainWindow):
         v.setContentsMargins(0, 32, 0, 24)
         v.setSpacing(0)
 
-        # Brand
         bl = QVBoxLayout()
         bl.setContentsMargins(24, 0, 24, 0)
         bl.setSpacing(4)
@@ -775,13 +749,12 @@ class VaultDashboard(QMainWindow):
         v.addWidget(hline())
         v.addSpacing(16)
 
-        # Nav items
         self.nav_btns = {}
         nav_items = [
-            ("files",   "📁", "ENCRYPTED FILES"),
-            ("creds",   "🔑", "CREDENTIALS"),
-            ("notes",   "📝", "SECURE NOTES"),
-            ("log",     "📋", "ACCESS LOG"),
+            ("files", "📁", "ENCRYPTED FILES"),
+            ("creds", "🔑", "CREDENTIALS"),
+            ("notes", "📝", "SECURE NOTES"),
+            ("log",   "📋", "ACCESS LOG"),
         ]
 
         for key, icon, label in nav_items:
@@ -793,22 +766,20 @@ class VaultDashboard(QMainWindow):
         v.addWidget(hline())
         v.addSpacing(12)
 
-        # Security status
         for line in [
             "// AES-256-GCM",
             "// LOCAL ONLY",
             "// NO CLOUD SYNC",
         ]:
-            v.addWidget(mk(line, C_GHOST, 10, mono=True))
+            lbl = mk(line, C_GHOST, 10, mono=True)
+            lbl.setContentsMargins(24, 0, 0, 0)
+            v.addWidget(lbl)
             v.addSpacing(2)
 
-        v.addSpacing(4)
         self.nav_btns['files'].set_active()
-
         return side
 
     def _nav_btn(self, icon: str, label: str, key: str):
-        """Create a sidebar navigation button."""
 
         class NavBtn(QPushButton):
             def __init__(self_, icon, label, key):
@@ -857,13 +828,9 @@ class VaultDashboard(QMainWindow):
 
             def set_inactive(self_):
                 self_.setStyleSheet(
-                    "QPushButton{"
-                    "  background:transparent;"
-                    "  border:none;"
-                    "}"
+                    "QPushButton{background:transparent;border:none;}"
                     "QPushButton:hover{"
-                    f"  background:{C_GHOST};"
-                    "}"
+                    f"background:{C_GHOST};}}"
                 )
                 self_.text_lbl.setStyleSheet(
                     f"color:{C_DIM};font-size:12px;"
@@ -876,7 +843,6 @@ class VaultDashboard(QMainWindow):
         return btn
 
     def _switch_section(self, key: str):
-        """Switch the visible section and update sidebar."""
         sections = {
             'files': 0, 'creds': 1,
             'notes': 2, 'log':   3
@@ -891,15 +857,10 @@ class VaultDashboard(QMainWindow):
         self.active_section = key
         self._reset_idle()
 
-        # Reload content when switching sections
-        if key == 'files':
-            self._reload_files()
-        elif key == 'creds':
-            self._reload_creds()
-        elif key == 'notes':
-            self._load_notes()
-        elif key == 'log':
-            self._load_log()
+        if key == 'files':  self._reload_files()
+        elif key == 'creds': self._reload_creds()
+        elif key == 'notes': self._load_notes()
+        elif key == 'log':   self._load_log()
 
     # -----------------------------------------------
     # FILES SECTION
@@ -911,7 +872,6 @@ class VaultDashboard(QMainWindow):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # Toolbar
         toolbar = QWidget()
         toolbar.setFixedHeight(58)
         toolbar.setStyleSheet(
@@ -925,10 +885,8 @@ class VaultDashboard(QMainWindow):
         th.addWidget(mk(
             "//  ENCRYPTED FILES", C_CYAN, 11, bold=True, mono=True
         ))
-        th.addSpacing(8)
         th.addWidget(mk(
-            "All files are encrypted with AES-256-GCM.",
-            C_DIM, 12
+            "All files encrypted with AES-256-GCM.", C_DIM, 12
         ))
         th.addStretch()
 
@@ -943,7 +901,6 @@ class VaultDashboard(QMainWindow):
 
         v.addWidget(toolbar)
 
-        # File list scroll area
         self.files_scroll = QScrollArea()
         self.files_scroll.setWidgetResizable(True)
         self.files_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -952,9 +909,7 @@ class VaultDashboard(QMainWindow):
         )
 
         self.files_container = QWidget()
-        self.files_container.setStyleSheet(
-            f"background:{C_BG};"
-        )
+        self.files_container.setStyleSheet(f"background:{C_BG};")
         self.files_layout = QVBoxLayout(self.files_container)
         self.files_layout.setContentsMargins(0, 0, 0, 0)
         self.files_layout.setSpacing(0)
@@ -963,13 +918,10 @@ class VaultDashboard(QMainWindow):
         self.files_scroll.setWidget(self.files_container)
         v.addWidget(self.files_scroll, stretch=1)
 
-        # Load files immediately
         QTimer.singleShot(100, self._reload_files)
         return widget
 
     def _reload_files(self):
-        """Clear and reload the file list from vault metadata."""
-        # Remove all existing rows
         while self.files_layout.count() > 1:
             item = self.files_layout.takeAt(0)
             if item.widget():
@@ -999,7 +951,6 @@ class VaultDashboard(QMainWindow):
             )
 
     def _add_file(self):
-        """Open a file picker and add the selected file to the vault."""
         self._reset_idle()
         path, _ = QFileDialog.getOpenFileName(
             self, "Select File to Add to Vault",
@@ -1010,14 +961,11 @@ class VaultDashboard(QMainWindow):
         try:
             meta = self.vault.add_file(Path(path))
             self._reload_files()
-            self._toast(
-                f"// FILE ADDED:  {meta['name']}"
-            )
+            self._toast(f"// FILE ADDED:  {meta['name']}")
         except Exception as e:
             self._err(f"Failed to add file:\n{e}")
 
     def _export_file(self, vault_id: str):
-        """Export (decrypt) a file to a user-chosen location."""
         self._reset_idle()
         dest = QFileDialog.getExistingDirectory(
             self, "Choose Export Location", str(Path.home())
@@ -1031,7 +979,6 @@ class VaultDashboard(QMainWindow):
             self._err(f"Export failed:\n{e}")
 
     def _delete_file(self, vault_id: str):
-        """Confirm and securely delete a vault file."""
         self._reset_idle()
         box = QMessageBox(self)
         box.setWindowTitle("// CONFIRM DELETE")
@@ -1068,7 +1015,6 @@ class VaultDashboard(QMainWindow):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # Toolbar
         toolbar = QWidget()
         toolbar.setFixedHeight(58)
         toolbar.setStyleSheet(
@@ -1092,7 +1038,6 @@ class VaultDashboard(QMainWindow):
 
         v.addWidget(toolbar)
 
-        # Column headers
         headers = QWidget()
         headers.setFixedHeight(36)
         headers.setStyleSheet(
@@ -1105,8 +1050,8 @@ class VaultDashboard(QMainWindow):
 
         for label, width in [
             ("SITE / APP", 180),
-            ("USERNAME", 160),
-            ("PASSWORD", 140),
+            ("USERNAME",   160),
+            ("PASSWORD",   140),
         ]:
             lbl = mk(label, C_DIM, 11, mono=True)
             lbl.setFixedWidth(width)
@@ -1115,7 +1060,6 @@ class VaultDashboard(QMainWindow):
         hh.addStretch()
         v.addWidget(headers)
 
-        # Credentials scroll area
         self.creds_scroll = QScrollArea()
         self.creds_scroll.setWidgetResizable(True)
         self.creds_scroll.setFrameShape(QFrame.Shape.NoFrame)
@@ -1136,7 +1080,6 @@ class VaultDashboard(QMainWindow):
         return widget
 
     def _reload_creds(self):
-        """Reload the credentials list."""
         while self.creds_layout.count() > 1:
             item = self.creds_layout.takeAt(0)
             if item.widget():
@@ -1162,7 +1105,6 @@ class VaultDashboard(QMainWindow):
             )
 
     def _add_credential(self):
-        """Show input dialogs to add a new credential."""
         self._reset_idle()
 
         site, ok = QInputDialog.getText(
@@ -1197,7 +1139,6 @@ class VaultDashboard(QMainWindow):
         self._toast(f"// CREDENTIAL SAVED:  {site.strip()}")
 
     def _delete_cred(self, index: int):
-        """Delete a credential at the given index."""
         self._reset_idle()
         creds = self.vault.load_creds()
         if 0 <= index < len(creds):
@@ -1217,7 +1158,6 @@ class VaultDashboard(QMainWindow):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # Toolbar
         toolbar = QWidget()
         toolbar.setFixedHeight(58)
         toolbar.setStyleSheet(
@@ -1232,8 +1172,7 @@ class VaultDashboard(QMainWindow):
             "//  SECURE NOTES", C_CYAN, 11, bold=True, mono=True
         ))
         th.addWidget(mk(
-            "Encrypted with AES-256-GCM. Auto-saved.",
-            C_DIM, 12
+            "Encrypted with AES-256-GCM. Auto-saved.", C_DIM, 12
         ))
         th.addStretch()
 
@@ -1245,7 +1184,6 @@ class VaultDashboard(QMainWindow):
 
         v.addWidget(toolbar)
 
-        # Notes text editor
         self.notes_editor = QTextEdit()
         self.notes_editor.setPlaceholderText(
             "// Start typing your secure notes here...\n"
@@ -1266,12 +1204,10 @@ class VaultDashboard(QMainWindow):
         return widget
 
     def _load_notes(self):
-        """Load notes content into the editor."""
         content = self.vault.load_notes()
         self.notes_editor.setPlainText(content)
 
     def _save_notes(self):
-        """Save the current notes content."""
         self._reset_idle()
         content = self.notes_editor.toPlainText()
         try:
@@ -1291,7 +1227,6 @@ class VaultDashboard(QMainWindow):
         v.setContentsMargins(0, 0, 0, 0)
         v.setSpacing(0)
 
-        # Toolbar
         toolbar = QWidget()
         toolbar.setFixedHeight(58)
         toolbar.setStyleSheet(
@@ -1305,8 +1240,7 @@ class VaultDashboard(QMainWindow):
             "//  ACCESS LOG", C_CYAN, 11, bold=True, mono=True
         ))
         th.addWidget(mk(
-            "Every vault operation is recorded here.",
-            C_DIM, 12
+            "Every vault operation is recorded here.", C_DIM, 12
         ))
         th.addStretch()
 
@@ -1318,7 +1252,6 @@ class VaultDashboard(QMainWindow):
 
         v.addWidget(toolbar)
 
-        # Log viewer
         self.log_viewer = QTextEdit()
         self.log_viewer.setReadOnly(True)
         self.log_viewer.setStyleSheet(
@@ -1336,15 +1269,12 @@ class VaultDashboard(QMainWindow):
         return widget
 
     def _load_log(self):
-        """Load and display the access log."""
         content = self.vault.load_log()
         self.log_viewer.setPlainText(content)
-        # Scroll to bottom to show latest entries
-        scrollbar = self.log_viewer.verticalScrollBar()
-        scrollbar.setValue(scrollbar.maximum())
+        sb = self.log_viewer.verticalScrollBar()
+        sb.setValue(sb.maximum())
 
     def _clear_log(self):
-        """Clear the access log file."""
         self._reset_idle()
         try:
             if LOG_FILE.exists():
@@ -1386,10 +1316,7 @@ class VaultDashboard(QMainWindow):
     # -----------------------------------------------
 
     def _toast(self, message: str):
-        """
-        Show a brief status message at the bottom.
-        Auto-clears after 4 seconds.
-        """
+        """Show a brief status message at the bottom."""
         self.toast_lbl.setText(message)
         self.toast_lbl.setStyleSheet(
             f"color:{C_GREEN};font-size:11px;"
@@ -1397,8 +1324,7 @@ class VaultDashboard(QMainWindow):
             f"background:transparent;"
         )
         QTimer.singleShot(
-            4000,
-            lambda: self.toast_lbl.setText("")
+            4000, lambda: self.toast_lbl.setText("")
         )
 
     def _err(self, message: str):
@@ -1421,13 +1347,15 @@ class VaultDashboard(QMainWindow):
         self.idle_timer.start(AUTO_LOCK_SECONDS * 1000)
 
     def _auto_lock(self):
-        """Lock the vault after inactivity timeout."""
+        """Lock after inactivity timeout."""
         write_log("VAULT_AUTO_LOCKED  reason:inactivity")
+        self._stop_security()
         self.lock_requested.emit()
 
     def _instant_lock(self):
         """Immediately lock the vault (panic button)."""
         write_log("VAULT_LOCKED  reason:panic_button")
+        self._stop_security()
         self.lock_requested.emit()
 
     def mousePressEvent(self, event):
@@ -1453,24 +1381,21 @@ class VaultDashboard(QMainWindow):
 
 
 # -----------------------------------------------
-# ENTRY POINT (for testing this screen alone)
+# ENTRY POINT
 # -----------------------------------------------
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
 
-    # Fake user data and password for standalone testing
     test_user = {
         'username': 'TestUser',
-        'hints': ['hint1', 'hint2', 'hint3'],
+        'hints'   : ['hint1', 'hint2', 'hint3'],
     }
-    test_password = "testpassword123"
 
     window = VaultDashboard(
         user_data=test_user,
-        master_password=test_password
+        master_password="testpassword123"
     )
-
     window.lock_requested.connect(app.quit)
     window.show()
 
