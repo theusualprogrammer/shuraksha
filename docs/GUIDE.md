@@ -269,9 +269,3 @@ GitHub: https://github.com/theusualprogrammer/shuraksha
 
 *Shuraksha Security Vault  |  Version 1.0.0  |  Built with Python and PyQt6*
 *AES-256-GCM Encryption  |  Local Only  |  No Cloud  |  No Servers*
-```
-
-Save with `Ctrl+S`. Now commit:
-```
-git add .
-git commit -m "Added full user guide documentation"
