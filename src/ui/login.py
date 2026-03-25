@@ -1,5 +1,7 @@
+# -----------------------------------------------
 # Shuraksha - Login Screen
-
+# File: src/ui/login.py
+# -----------------------------------------------
 
 import sys
 import os
@@ -17,27 +19,27 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 from src.core.crypto import verify_value, decrypt_json
 
-
+# -----------------------------------------------
 # PATHS
-
+# -----------------------------------------------
 APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 USER_DATA_FILE = APP_DATA_DIR / 'user.dat'
 
-
+# -----------------------------------------------
 # SETTINGS
-
+# -----------------------------------------------
 MAX_ATTEMPTS    = 5
 LOCKOUT_SECONDS = 300
 
-
+# -----------------------------------------------
 # DIMENSIONS
-
+# -----------------------------------------------
 WIN_W = 520
 WIN_H = 660
 
-
+# -----------------------------------------------
 # COLOURS
-
+# -----------------------------------------------
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -55,9 +57,6 @@ C_DIM      = "#2A4A62"
 C_GHOST    = "#0E1E2E"
 C_RED      = "#FF3A1A"
 C_RED_BG   = "#1A0500"
-
-
-# BUTTON STYLES
 
 BTN_PRIMARY = (
     f"QPushButton{{"
@@ -144,16 +143,12 @@ GLOBAL_STYLE = f"""
 """
 
 
-
-# LABEL HELPER
-
 def mk_lbl(text, color=C_WHITE, size=13, bold=False,
            mono=False, wrap=False, align=None):
-    """Create a styled QLabel in one line."""
     l = QLabel(text)
     family = (
-        "'Consolas','Courier New',monospace" if mono
-        else "'Segoe UI',Arial,sans-serif"
+        "'Consolas','Courier New',monospace"
+        if mono else "'Segoe UI',Arial,sans-serif"
     )
     weight = "font-weight:bold;" if bold else ""
     l.setStyleSheet(
@@ -168,14 +163,10 @@ def mk_lbl(text, color=C_WHITE, size=13, bold=False,
     return l
 
 
-
+# -----------------------------------------------
 # HINTS OVERLAY
-
+# -----------------------------------------------
 class HintsOverlay(QWidget):
-    """
-    Shows the three password hints one at a time.
-    After all three are revealed, a Wipe Vault button appears.
-    """
 
     back_requested = pyqtSignal()
     wipe_requested = pyqtSignal()
@@ -208,16 +199,14 @@ class HintsOverlay(QWidget):
         ul.setFixedSize(48, 2)
         ul.setStyleSheet(f"background:{C_CYAN};border:none;")
         v.addWidget(ul)
-
         v.addSpacing(6)
+
         v.addWidget(mk_lbl(
-            "Hints are revealed one at a time. "
-            "Click the button below to reveal each one.",
+            "Hints are revealed one at a time.",
             C_MID, 13, wrap=True
         ))
         v.addSpacing(16)
 
-        # Three hint boxes - start hidden
         self.hint_frames = []
         self.hint_labels = []
 
@@ -239,7 +228,9 @@ class HintsOverlay(QWidget):
             fl.setContentsMargins(20, 16, 20, 16)
             fl.setSpacing(16)
 
-            num_lbl = mk_lbl(f"[ {i+1} ]", C_DIM, 13, bold=True, mono=True)
+            num_lbl = mk_lbl(
+                f"[ {i+1} ]", C_DIM, 13, bold=True, mono=True
+            )
             num_lbl.setFixedWidth(44)
             fl.addWidget(num_lbl)
 
@@ -290,8 +281,10 @@ class HintsOverlay(QWidget):
         if self.revealed >= len(self.hints):
             return
         i    = self.revealed
-        text = self.hints[i] if self.hints[i] else "(no hint entered)"
-
+        text = (
+            self.hints[i] if self.hints[i]
+            else "(no hint entered)"
+        )
         self.hint_labels[i].setText(text)
         self.hint_labels[i].setStyleSheet(
             f"color:{C_MID};font-size:13px;background:transparent;"
@@ -317,35 +310,35 @@ class HintsOverlay(QWidget):
         box.setWindowTitle("// CONFIRM VAULT WIPE")
         box.setText(
             "This will permanently delete ALL vault data.\n\n"
-            "Your encrypted files, credentials, and settings\n"
-            "will be completely and irreversibly destroyed.\n\n"
             "Are you absolutely sure?"
         )
         box.setStandardButtons(
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No
         )
-        box.button(QMessageBox.StandardButton.Yes).setText("WIPE EVERYTHING")
-        box.button(QMessageBox.StandardButton.No).setText("CANCEL")
+        box.button(
+            QMessageBox.StandardButton.Yes
+        ).setText("WIPE EVERYTHING")
+        box.button(
+            QMessageBox.StandardButton.No
+        ).setText("CANCEL")
         box.setStyleSheet(
             f"QMessageBox{{background:{C_BG};color:{C_WHITE};"
-            f"font-family:'Consolas','Courier New',monospace;font-size:13px;}}"
-            f"QPushButton{{background:{C_RED};color:#000000;border:none;"
-            f"padding:8px 20px;font-weight:bold;font-size:12px;"
+            f"font-family:'Consolas','Courier New',monospace;"
+            f"font-size:13px;}}"
+            f"QPushButton{{background:{C_RED};color:#000000;"
+            f"border:none;padding:8px 20px;font-weight:bold;"
+            f"font-size:12px;"
             f"font-family:'Consolas','Courier New',monospace;}}"
         )
         if box.exec() == QMessageBox.StandardButton.Yes:
             self.wipe_requested.emit()
 
 
-
+# -----------------------------------------------
 # LOCKOUT SCREEN
-
+# -----------------------------------------------
 class LockoutScreen(QWidget):
-    """
-    Shown after MAX_ATTEMPTS wrong password entries.
-    Displays a countdown timer. When it hits zero the
-    user can try again.
-    """
 
     unlocked = pyqtSignal()
 
@@ -381,8 +374,8 @@ class LockoutScreen(QWidget):
         ul.setFixedSize(52, 2)
         ul.setStyleSheet(f"background:{C_RED};border:none;")
         v.addWidget(ul)
-
         v.addSpacing(10)
+
         v.addWidget(mk_lbl(
             "Maximum login attempts exceeded.\n"
             "Vault access has been suspended.",
@@ -401,12 +394,10 @@ class LockoutScreen(QWidget):
 
         v.addSpacing(10)
         v.addWidget(mk_lbl(
-            "Vault will unlock automatically when the\n"
-            "countdown reaches zero.",
+            "Vault will unlock when the countdown reaches zero.",
             C_DIM, 13, wrap=True,
             align=Qt.AlignmentFlag.AlignCenter
         ))
-
         v.addStretch()
 
         for line in [
@@ -427,16 +418,26 @@ class LockoutScreen(QWidget):
             self.unlocked.emit()
 
 
-
+# -----------------------------------------------
 # LOGIN WINDOW
-
+# -----------------------------------------------
 class LoginWindow(QMainWindow):
     """
-    The main login window. Shows on every launch.
-    Three views: login form / hints / lockout.
+    Login screen shown on every app launch.
+
+    user.dat structure expected:
+    {
+        "password_hash": "...",   <- verified directly (no decryption)
+        "password_salt": "...",   <- verified directly (no decryption)
+        "encrypted": {...}        <- decrypted only after correct password
+    }
+
+    Signal login_success(dict, str) carries:
+        dict - the decrypted inner data
+        str  - the plain master password for the vault manager
     """
 
-    login_success = pyqtSignal(dict)
+    login_success = pyqtSignal(dict, str)
 
     def __init__(self):
         super().__init__()
@@ -454,8 +455,9 @@ class LoginWindow(QMainWindow):
 
     def _load_raw(self) -> dict:
         """
-        Load the raw encrypted JSON blob from disk.
-        Returns empty dict if the file does not exist.
+        Load the full JSON from user.dat.
+        Expected keys: password_hash, password_salt, encrypted.
+        Returns empty dict if file missing or unreadable.
         """
         if not USER_DATA_FILE.exists():
             return {}
@@ -497,8 +499,10 @@ class LoginWindow(QMainWindow):
 
         h = QHBoxLayout(bar)
         h.setContentsMargins(20, 0, 20, 0)
-        h.addWidget(mk_lbl("[  SHR  ]", C_CYAN, 11, bold=True, mono=True))
-        h.addWidget(mk_lbl("  //  ",    C_GHOST, 11, mono=True))
+        h.addWidget(mk_lbl(
+            "[  SHR  ]", C_CYAN, 11, bold=True, mono=True
+        ))
+        h.addWidget(mk_lbl("  //  ", C_GHOST, 11, mono=True))
         h.addWidget(mk_lbl("SECURITY VAULT", C_DIM, 11, mono=True))
         h.addStretch()
 
@@ -519,7 +523,6 @@ class LoginWindow(QMainWindow):
         v.setContentsMargins(52, 56, 52, 44)
         v.setSpacing(0)
 
-        # ---- Brand ----
         brand = QLabel("SHURAKSHA")
         brand.setStyleSheet(
             f"color:{C_WHITE};font-size:22px;font-weight:bold;"
@@ -527,7 +530,9 @@ class LoginWindow(QMainWindow):
         )
         v.addWidget(brand)
         v.addSpacing(4)
-        v.addWidget(mk_lbl("> security_vault.exe", C_DIM, 11, mono=True))
+        v.addWidget(mk_lbl(
+            "> security_vault.exe", C_DIM, 11, mono=True
+        ))
         v.addSpacing(28)
 
         div = QFrame()
@@ -536,7 +541,6 @@ class LoginWindow(QMainWindow):
         v.addWidget(div)
         v.addSpacing(32)
 
-        # ---- Header ----
         v.addWidget(mk_lbl(
             "//  ACCESS_REQUIRED", C_CYAN, 11, bold=True, mono=True
         ))
@@ -561,8 +565,9 @@ class LoginWindow(QMainWindow):
         ))
         v.addSpacing(36)
 
-        # ---- Password input ----
-        v.addWidget(mk_lbl("// MASTER PASSWORD", C_MID, 12, mono=True))
+        v.addWidget(mk_lbl(
+            "// MASTER PASSWORD", C_MID, 12, mono=True
+        ))
         v.addSpacing(8)
 
         self.pwd_input = QLineEdit()
@@ -573,13 +578,11 @@ class LoginWindow(QMainWindow):
         v.addWidget(self.pwd_input)
         v.addSpacing(14)
 
-        # ---- Error label ----
         self.error_lbl = mk_lbl("", C_RED, 12, mono=True)
         self.error_lbl.setFixedHeight(20)
         v.addWidget(self.error_lbl)
         v.addSpacing(16)
 
-        # ---- Login button ----
         self.login_btn = QPushButton("UNLOCK VAULT  >>")
         self.login_btn.setFixedHeight(54)
         self.login_btn.setStyleSheet(BTN_PRIMARY)
@@ -587,16 +590,18 @@ class LoginWindow(QMainWindow):
         v.addWidget(self.login_btn)
         v.addSpacing(22)
 
-        # ---- Attempt dots ----
         dots_row = QHBoxLayout()
         dots_row.setSpacing(8)
-        dots_row.addWidget(mk_lbl("// ATTEMPTS:", C_DIM, 11, mono=True))
+        dots_row.addWidget(
+            mk_lbl("// ATTEMPTS:", C_DIM, 11, mono=True)
+        )
 
         self.attempt_dots = []
         for _ in range(MAX_ATTEMPTS):
             dot = QLabel("●")
             dot.setStyleSheet(
-                f"color:{C_CYAN};font-size:16px;background:transparent;"
+                f"color:{C_CYAN};font-size:16px;"
+                f"background:transparent;"
             )
             self.attempt_dots.append(dot)
             dots_row.addWidget(dot)
@@ -611,7 +616,6 @@ class LoginWindow(QMainWindow):
         v.addWidget(div2)
         v.addSpacing(18)
 
-        # ---- Forgot password ----
         forgot = QPushButton("Forgot password?  Show hints  >>")
         forgot.setStyleSheet(
             f"QPushButton{{background:transparent;color:{C_DIM};"
@@ -626,14 +630,8 @@ class LoginWindow(QMainWindow):
         return widget
 
     def _build_hints_view(self):
-        """
-        Build the hints overlay view.
-        Hints are passed as empty strings here.
-        They are loaded from disk only after the user
-        has confirmed they cannot remember the password.
-        """
-        widget   = QWidget()
-        layout   = QVBoxLayout(widget)
+        widget = QWidget()
+        layout = QVBoxLayout(widget)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
 
@@ -644,16 +642,28 @@ class LoginWindow(QMainWindow):
         layout.addWidget(self.hints_overlay)
         return widget
 
-    
-    # ACTIONS
-    
+    # -----------------------------------------------
+    # LOGIN LOGIC
+    # -----------------------------------------------
 
     def _attempt_login(self):
         """
-        Verify the entered password against the stored hash.
-        On success: decrypt data and emit login_success.
-        On failure: decrease attempts, update dots.
-        On zero attempts: show lockout screen.
+        Login flow:
+
+        Step 1: Read password_hash and password_salt directly
+                from the outer JSON structure. These are NOT
+                encrypted so we can read them without the password.
+
+        Step 2: Verify the entered password against that hash
+                using verify_value from crypto.py.
+
+        Step 3: If correct, decrypt the inner 'encrypted' blob
+                using the verified password.
+
+        Step 4: Merge dob_hash and dob_salt from inner data,
+                then emit login_success(inner_data, password).
+
+        Step 5: If wrong, decrement attempts and update UI.
         """
         if self.locked_out:
             return
@@ -661,41 +671,70 @@ class LoginWindow(QMainWindow):
         password = self.pwd_input.text()
 
         if not password:
-            self.error_lbl.setText("// ERROR: password field is empty.")
+            self.error_lbl.setText(
+                "// ERROR: password field is empty."
+            )
             return
 
         if not self.raw_data:
             self.error_lbl.setText(
-                "// ERROR: no registration data found. Run installer."
+                "// ERROR: no registration data found. "
+                "Run the installer."
             )
             return
 
-        try:
-            correct = verify_value(
-                password,
-                self.raw_data['password_hash'],
-                self.raw_data['password_salt']
+        # Step 1: read hash and salt from outer structure
+        pwd_hash = self.raw_data.get('password_hash', '')
+        pwd_salt = self.raw_data.get('password_salt', '')
+
+        if not pwd_hash or not pwd_salt:
+            self.error_lbl.setText(
+                "// ERROR: registration data corrupted. "
+                "Delete AppData/Shuraksha and run installer again."
             )
-        except Exception:
-            correct = False
+            return
+
+        # Step 2: verify password
+        try:
+            correct = verify_value(password, pwd_hash, pwd_salt)
+        except Exception as e:
+            self.error_lbl.setText(
+                f"// ERROR: verification failed: {str(e)}"
+            )
+            return
 
         if correct:
+            # Step 3: decrypt the inner blob
+            encrypted_blob = self.raw_data.get('encrypted', {})
+            if not encrypted_blob:
+                self.error_lbl.setText(
+                    "// ERROR: encrypted data missing. "
+                    "Run installer again."
+                )
+                return
+
             try:
-                decrypted = decrypt_json(self.raw_data, password)
-                self.pwd_input.clear()
-                self.login_success.emit(decrypted)
+                inner = decrypt_json(encrypted_blob, password)
             except Exception as e:
                 self.error_lbl.setText(
                     f"// ERROR: decryption failed: {str(e)}"
                 )
+                return
+
+            # Step 4: clear input and emit success
+            self.pwd_input.clear()
+            self.login_success.emit(inner, password)
+
         else:
+            # Step 5: wrong password
             self.attempts_left -= 1
             self.pwd_input.clear()
 
             used = MAX_ATTEMPTS - self.attempts_left
             for i, dot in enumerate(self.attempt_dots):
                 dot.setStyleSheet(
-                    f"color:{C_RED if i < used else C_CYAN};"
+                    f"color:"
+                    f"{'#FF3A1A' if i < used else C_CYAN};"
                     f"font-size:16px;background:transparent;"
                 )
 
@@ -706,7 +745,8 @@ class LoginWindow(QMainWindow):
                 self.error_lbl.setText(
                     f"// ERROR: incorrect password.  "
                     f"[ {self.attempts_left} "
-                    f"attempt{'s' if self.attempts_left != 1 else ''} "
+                    f"attempt"
+                    f"{'s' if self.attempts_left != 1 else ''} "
                     f"remaining ]"
                 )
 
@@ -718,37 +758,36 @@ class LoginWindow(QMainWindow):
         self.error_lbl.setText("")
 
     def _on_unlock(self):
-        """Called when the lockout countdown reaches zero."""
         self.locked_out    = False
         self.attempts_left = MAX_ATTEMPTS
         self.error_lbl.setText("")
         for dot in self.attempt_dots:
             dot.setStyleSheet(
-                f"color:{C_CYAN};font-size:16px;background:transparent;"
+                f"color:{C_CYAN};font-size:16px;"
+                f"background:transparent;"
             )
         self.stack.setCurrentIndex(0)
 
     def _wipe_vault(self):
-        """Permanently delete all Shuraksha data from the system."""
         import shutil
         try:
             if APP_DATA_DIR.exists():
                 shutil.rmtree(APP_DATA_DIR)
             QMessageBox.information(
                 self, "// VAULT WIPED",
-                "All Shuraksha data has been permanently deleted.\n\n"
-                "Run the installer again to create a new vault."
+                "All data permanently deleted.\n\n"
+                "Run the installer again."
             )
             QApplication.quit()
         except Exception as e:
             QMessageBox.critical(
                 self, "// WIPE FAILED",
-                f"Could not delete vault data.\n\nError: {str(e)}"
+                f"Could not delete data.\n\nError: {str(e)}"
             )
 
-    
+    # -----------------------------------------------
     # WINDOW DRAG
-    
+    # -----------------------------------------------
 
     def mousePressEvent(self, event):
         if event.position().y() < 40:
@@ -765,9 +804,6 @@ class LoginWindow(QMainWindow):
     def mouseReleaseEvent(self, event):
         self._drag_pos = None
 
-
-
-# ENTRY POINT
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
