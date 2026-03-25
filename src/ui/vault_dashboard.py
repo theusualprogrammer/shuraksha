@@ -1031,6 +1031,11 @@ class VaultDashboard(QMainWindow):
         th.addStretch()
 
         add_cred_btn = QPushButton("+ ADD CREDENTIAL")
+        import_btn = QPushButton("IMPORT FROM BROWSER")
+        import_btn.setFixedSize(200, 36)
+        import_btn.setStyleSheet(BTN_GHOST)
+        import_btn.clicked.connect(self._import_from_browser)
+        th.addWidget(import_btn)
         add_cred_btn.setFixedSize(160, 36)
         add_cred_btn.setStyleSheet(BTN_PRIMARY)
         add_cred_btn.clicked.connect(self._add_credential)
@@ -1379,6 +1384,114 @@ class VaultDashboard(QMainWindow):
         self._reset_idle()
         super().keyPressEvent(event)
 
+def _import_from_browser(self):
+        """
+        Extract saved passwords from installed browsers
+        and import them into the vault credentials section.
+        Shows a summary of what was found and imported.
+        """
+        self._reset_idle()
+
+        try:
+            from src.browser.extractor import BrowserExtractor
+
+            extractor  = BrowserExtractor()
+            available  = extractor.get_available_browsers()
+
+            if not available:
+                self._toast(
+                    "// No supported browsers found."
+                )
+                return
+
+            self._toast(
+                f"// Scanning:  "
+                f"{', '.join(available)}  ..."
+            )
+
+            # Extract all credentials
+            extracted = extractor.extract_all()
+
+            if not extracted:
+                self._toast(
+                    "// No saved credentials found in browsers."
+                )
+                return
+
+            # Load existing credentials to avoid duplicates
+            existing = self.vault.load_creds()
+            existing_keys = {
+                (c.get('site', ''), c.get('username', ''))
+                for c in existing
+            }
+
+            # Filter out duplicates
+            new_creds = []
+            for cred in extracted:
+                key = (
+                    cred.get('site', ''),
+                    cred.get('username', '')
+                )
+                if key not in existing_keys:
+                    new_creds.append({
+                        'site'    : cred['site'],
+                        'username': cred['username'],
+                        'password': cred['password'],
+                        'added'   : (
+                            datetime.now()
+                            .strftime("%d %b %Y")
+                        ),
+                    })
+                    existing_keys.add(key)
+
+            if not new_creds:
+                self._toast(
+                    "// All browser credentials already "
+                    "in vault. Nothing new to import."
+                )
+                return
+
+            # Confirm import
+            box = QMessageBox(self)
+            box.setWindowTitle("// IMPORT CREDENTIALS")
+            box.setText(
+                f"Found {len(new_creds)} new credential"
+                f"{'s' if len(new_creds) != 1 else ''} "
+                f"from {', '.join(available)}.\n\n"
+                f"Import them into the vault?"
+            )
+            box.setStandardButtons(
+                QMessageBox.StandardButton.Yes |
+                QMessageBox.StandardButton.No
+            )
+            box.setStyleSheet(
+                f"QMessageBox{{background:{C_BG};"
+                f"color:{C_WHITE};"
+                f"font-family:'Consolas','Courier New',"
+                f"monospace;}}"
+                f"QPushButton{{background:{C_CYAN};"
+                f"color:#000;border:none;"
+                f"padding:6px 16px;font-weight:bold;"
+                f"font-family:'Consolas','Courier New',"
+                f"monospace;}}"
+            )
+
+            if box.exec() == QMessageBox.StandardButton.Yes:
+                existing.extend(new_creds)
+                self.vault.save_creds(existing)
+                write_log(
+                    f"BROWSER_IMPORT  "
+                    f"{len(new_creds)} credentials imported"
+                )
+                self._reload_creds()
+                self._toast(
+                    f"// IMPORTED:  {len(new_creds)} "
+                    f"credential"
+                    f"{'s' if len(new_creds) != 1 else ''}"
+                )
+
+        except Exception as e:
+            self._err(f"Browser import failed:\n{str(e)}")
 
 # -----------------------------------------------
 # ENTRY POINT
