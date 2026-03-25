@@ -1,7 +1,4 @@
-# -----------------------------------------------
 # Shuraksha - Encryption Utilities
-# File: src/core/crypto.py
-# -----------------------------------------------
 
 import json
 import secrets
