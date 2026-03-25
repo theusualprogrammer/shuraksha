@@ -1,0 +1,24 @@
+# Virtual environment - do not track this in Git
+venv/
+
+# Python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+
+# VS Code settings
+.vscode/
+
+# PyInstaller build output
+build/
+dist/
+*.spec
+
+# Sensitive vault data files (never commit real user data)
+*.vault
+*.vaultdb
+*.key
+
+# Windows system files
+Thumbs.db
+desktop.ini
