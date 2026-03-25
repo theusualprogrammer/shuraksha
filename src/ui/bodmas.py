@@ -1,29 +1,4 @@
-# -----------------------------------------------
 # Shuraksha - BODMAS Screen
-# File: src/ui/bodmas.py
-# -----------------------------------------------
-# This screen appears when the user slides the
-# theme toggle to dark mode.
-#
-# What an observer sees:
-#   - A dark screen with a maths question
-#   - An answer input field
-#   - A Submit button
-#   - Wrong answers show an error message
-#
-# What is actually happening:
-#   - The maths question is completely fake
-#   - Typing the date of birth in DD/MM/YYYY
-#     format and pressing Submit opens the real vault
-#   - Wrong answers (not the DOB) count as attempts
-#   - After MAX_WRONG attempts the screen locks
-#     and shows a fake crash screen
-#
-# The deception works because:
-#   - The question looks legitimate and simple
-#   - Nobody would guess to type a date instead
-#   - The error messages look like wrong math answers
-# -----------------------------------------------
 
 import sys
 import re
@@ -54,20 +29,19 @@ except ImportError:
     def verify_value(val, h, salt):
         return hashlib.sha256((val + salt).encode()).hexdigest() == h
 
-# -----------------------------------------------
+
 # DIMENSIONS
-# -----------------------------------------------
+
 WIN_W = 1100
 WIN_H = 720
 
-# -----------------------------------------------
+
 # HOW MANY WRONG ANSWERS BEFORE LOCKOUT
-# -----------------------------------------------
+
 MAX_WRONG = 4
 
-# -----------------------------------------------
 # COLOURS  (dark mode - same palette as the vault)
-# -----------------------------------------------
+
 C_BG        = "#060912"
 C_PANEL     = "#04060E"
 C_CARD      = "#080C18"
@@ -89,9 +63,9 @@ C_RED_BG    = "#1A0500"
 C_GREEN     = "#00CC66"
 C_AMBER     = "#FF8800"
 
-# -----------------------------------------------
+
 # BUTTON STYLES
-# -----------------------------------------------
+
 BTN_PRIMARY = (
     f"QPushButton{{"
     f"  background-color:{C_CYAN};"
@@ -152,9 +126,9 @@ GLOBAL_STYLE = f"""
 """
 
 
-# -----------------------------------------------
+
 # BODMAS QUESTION GENERATOR
-# -----------------------------------------------
+
 class BodmasQuestion:
     """
     Generates a simple BODMAS-style maths question.
@@ -193,9 +167,9 @@ class BodmasQuestion:
         return question, instruction
 
 
-# -----------------------------------------------
+
 # FAKE CRASH SCREEN
-# -----------------------------------------------
+
 class FakeCrashScreen(QWidget):
     """
     Shown after MAX_WRONG wrong answers.
@@ -293,9 +267,8 @@ class FakeCrashScreen(QWidget):
             v.addWidget(lbl)
 
 
-# -----------------------------------------------
 # BODMAS SCREEN
-# -----------------------------------------------
+
 class BodmasScreen(QMainWindow):
     """
     The fake maths challenge screen.

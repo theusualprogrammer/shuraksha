@@ -1,7 +1,4 @@
-# -----------------------------------------------
 # Shuraksha - Registration Wizard
-# File: src/installer/registration.py
-# -----------------------------------------------
 
 import sys
 import os
@@ -22,16 +19,16 @@ from PyQt6.QtGui import QColor, QPalette
 
 from src.core.crypto import hash_value, encrypt_json
 
-# -----------------------------------------------
+
 # STORAGE
-# -----------------------------------------------
+
 APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 USER_DATA_FILE = APP_DATA_DIR / 'user.dat'
 VAULT_DIR      = APP_DATA_DIR / 'vault'
 
-# -----------------------------------------------
+
 # DIMENSIONS  (all in pixels, fixed layout)
-# -----------------------------------------------
+
 WIN_W       = 1024
 WIN_H       = 720
 PROG_H      = 3
@@ -70,10 +67,9 @@ C_RED       = "#FF3A1A"
 C_RED_BG    = "#1A0500"
 
 
-# -----------------------------------------------
+
 # BUTTON STYLES applied directly to widgets
-# so the global stylesheet cannot override them
-# -----------------------------------------------
+
 STYLE_CONTINUE = (
     f"QPushButton{{"
     f"  background-color: #38C8FF;"
@@ -245,9 +241,9 @@ class RegistrationWizard(QMainWindow):
             f"padding-left:28px;"
         )
 
-    # -----------------------------------------------
+    
     # LAYOUT
-    # -----------------------------------------------
+    
 
     def _build_layout(self):
         """
@@ -984,9 +980,9 @@ class RegistrationWizard(QMainWindow):
         v.addStretch()
         return p
 
-    # -----------------------------------------------
+    
     # NAVIGATION
-    # -----------------------------------------------
+    
 
     def _go_next(self):
         if self.current_page == 1:
@@ -1071,9 +1067,9 @@ class RegistrationWizard(QMainWindow):
             else:
                 lbl.setStyleSheet(self._step_future())
 
-    # -----------------------------------------------
+    
     # INPUT HELPERS
-    # -----------------------------------------------
+    
 
     def _check_strength(self, pwd):
         score = 0
@@ -1132,9 +1128,9 @@ class RegistrationWizard(QMainWindow):
         )
         box.exec()
 
-    # -----------------------------------------------
+    
     # SAVE
-    # -----------------------------------------------
+    
 
     def _save(self):
         try:
@@ -1184,9 +1180,9 @@ class RegistrationWizard(QMainWindow):
         if box.exec() == QMessageBox.StandardButton.Yes:
             QApplication.quit()
 
-    # -----------------------------------------------
+    
     # WINDOW DRAG
-    # -----------------------------------------------
+    
 
     def mousePressEvent(self, event):
         if event.position().y() < PROG_H + TITLE_H:

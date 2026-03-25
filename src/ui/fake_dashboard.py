@@ -1,7 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Fake Light Mode Dashboard (Decoy)
-# File: src/ui/fake_dashboard.py
-# -----------------------------------------------
+
 
 import sys
 import os
@@ -19,18 +17,18 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
-# -----------------------------------------------
+
 # DIMENSIONS
-# -----------------------------------------------
+
 WIN_W      = 1100
 WIN_H      = 720
 SIDEBAR_W  = 210
 TITLEBAR_H = 46
 NAVBAR_H   = 48
 
-# -----------------------------------------------
+
 # LIGHT MODE COLOURS
-# -----------------------------------------------
+
 L_BG       = "#F5F5F7"
 L_SIDEBAR  = "#EBEBED"
 L_TITLEBAR = "#E8E8EA"
@@ -48,9 +46,9 @@ L_ACCENT_H = "#1557B0"
 L_RED      = "#D32F2F"
 L_BAR_BG   = "#E0E0E0"
 
-# -----------------------------------------------
+
 # FILE ICONS
-# -----------------------------------------------
+
 ICON_FOLDER  = "📁"
 ICON_IMAGE   = "🖼"
 ICON_VIDEO   = "🎬"
@@ -122,9 +120,9 @@ def get_drive_usage(path: Path):
         return 0, 0
 
 
-# -----------------------------------------------
+
 # THEME TOGGLE
-# -----------------------------------------------
+
 class ThemeToggle(QWidget):
     """
     Looks like a normal light/dark mode slider.
@@ -206,9 +204,9 @@ class ThemeToggle(QWidget):
             self.dark_mode_activated.emit()
 
 
-# -----------------------------------------------
+
 # FILE CARD
-# -----------------------------------------------
+
 class FileCard(QWidget):
     """
     A single file or folder card in the grid.
@@ -308,9 +306,9 @@ class FileCard(QWidget):
         self._set_style(self.selected)
 
 
-# -----------------------------------------------
+
 # SIDEBAR ITEM
-# -----------------------------------------------
+
 class SidebarItem(QPushButton):
     """A clickable item in the left sidebar."""
 
@@ -363,11 +361,7 @@ class SidebarItem(QPushButton):
         )
 
 
-# -----------------------------------------------
 # STORAGE BAR WIDGET
-# Shows real disk usage for the current drive.
-# Updates every time the user navigates.
-# -----------------------------------------------
 class StorageBar(QWidget):
     """
     Displays the real disk usage for the current drive.
@@ -460,9 +454,8 @@ class StorageBar(QWidget):
         super().resizeEvent(event)
 
 
-# -----------------------------------------------
 # MAIN FAKE DASHBOARD
-# -----------------------------------------------
+
 class FakeDashboard(QMainWindow):
     """
     The fake light mode file manager.
@@ -534,9 +527,9 @@ class FakeDashboard(QMainWindow):
             }}
         """
 
-    # -----------------------------------------------
+    
     # LAYOUT
-    # -----------------------------------------------
+    
 
     def _build(self):
         root = QWidget()
@@ -858,9 +851,9 @@ class FakeDashboard(QMainWindow):
 
         return status
 
-    # -----------------------------------------------
+    
     # FILE LOADING
-    # -----------------------------------------------
+    
 
     def _load_directory(self, path: Path):
         """
@@ -978,9 +971,9 @@ class FakeDashboard(QMainWindow):
         for card in self.all_cards:
             card.setVisible(not q or q in card.path.name.lower())
 
-    # -----------------------------------------------
+    
     # NAVIGATION
-    # -----------------------------------------------
+    
 
     def _navigate_to(self, path: Path):
         if not path.is_dir():
@@ -1020,9 +1013,9 @@ class FakeDashboard(QMainWindow):
         else:
             self.status_lbl.setText(f"Opening:  {path.name}")
 
-    # -----------------------------------------------
+    
     # WINDOW DRAG
-    # -----------------------------------------------
+    
 
     def mousePressEvent(self, event):
         if event.position().y() < TITLEBAR_H:
@@ -1040,9 +1033,9 @@ class FakeDashboard(QMainWindow):
         self._drag_pos = None
 
 
-# -----------------------------------------------
+
 # ENTRY POINT
-# -----------------------------------------------
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')

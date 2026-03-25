@@ -1,7 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Login Screen
-# File: src/ui/login.py
-# -----------------------------------------------
+
 
 import sys
 import os
@@ -19,27 +17,27 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 from src.core.crypto import verify_value, decrypt_json
 
-# -----------------------------------------------
+
 # PATHS
-# -----------------------------------------------
+
 APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 USER_DATA_FILE = APP_DATA_DIR / 'user.dat'
 
-# -----------------------------------------------
+
 # SETTINGS
-# -----------------------------------------------
+
 MAX_ATTEMPTS    = 5
 LOCKOUT_SECONDS = 300
 
-# -----------------------------------------------
+
 # DIMENSIONS
-# -----------------------------------------------
+
 WIN_W = 520
 WIN_H = 660
 
-# -----------------------------------------------
+
 # COLOURS
-# -----------------------------------------------
+
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -58,11 +56,9 @@ C_GHOST    = "#0E1E2E"
 C_RED      = "#FF3A1A"
 C_RED_BG   = "#1A0500"
 
-# -----------------------------------------------
+
 # BUTTON STYLES
-# Applied directly on each button so the global
-# stylesheet can never override them.
-# -----------------------------------------------
+
 BTN_PRIMARY = (
     f"QPushButton{{"
     f"  background-color:{C_CYAN};"
@@ -148,9 +144,9 @@ GLOBAL_STYLE = f"""
 """
 
 
-# -----------------------------------------------
+
 # LABEL HELPER
-# -----------------------------------------------
+
 def mk_lbl(text, color=C_WHITE, size=13, bold=False,
            mono=False, wrap=False, align=None):
     """Create a styled QLabel in one line."""
@@ -172,9 +168,9 @@ def mk_lbl(text, color=C_WHITE, size=13, bold=False,
     return l
 
 
-# -----------------------------------------------
+
 # HINTS OVERLAY
-# -----------------------------------------------
+
 class HintsOverlay(QWidget):
     """
     Shows the three password hints one at a time.
@@ -341,9 +337,9 @@ class HintsOverlay(QWidget):
             self.wipe_requested.emit()
 
 
-# -----------------------------------------------
+
 # LOCKOUT SCREEN
-# -----------------------------------------------
+
 class LockoutScreen(QWidget):
     """
     Shown after MAX_ATTEMPTS wrong password entries.
@@ -431,9 +427,9 @@ class LockoutScreen(QWidget):
             self.unlocked.emit()
 
 
-# -----------------------------------------------
+
 # LOGIN WINDOW
-# -----------------------------------------------
+
 class LoginWindow(QMainWindow):
     """
     The main login window. Shows on every launch.
@@ -648,9 +644,9 @@ class LoginWindow(QMainWindow):
         layout.addWidget(self.hints_overlay)
         return widget
 
-    # -----------------------------------------------
+    
     # ACTIONS
-    # -----------------------------------------------
+    
 
     def _attempt_login(self):
         """
@@ -750,9 +746,9 @@ class LoginWindow(QMainWindow):
                 f"Could not delete vault data.\n\nError: {str(e)}"
             )
 
-    # -----------------------------------------------
+    
     # WINDOW DRAG
-    # -----------------------------------------------
+    
 
     def mousePressEvent(self, event):
         if event.position().y() < 40:
@@ -770,9 +766,9 @@ class LoginWindow(QMainWindow):
         self._drag_pos = None
 
 
-# -----------------------------------------------
+
 # ENTRY POINT
-# -----------------------------------------------
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
