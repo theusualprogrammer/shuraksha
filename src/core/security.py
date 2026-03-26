@@ -1,7 +1,6 @@
-# -----------------------------------------------
 # Shuraksha - Security Hardening Module
-# File: src/core/security.py
-# -----------------------------------------------
+
+
 
 import os
 import ctypes
@@ -18,9 +17,8 @@ try:
 except ImportError:
     PSUTIL_AVAILABLE = False
 
-# -----------------------------------------------
-# KNOWN THREAT SIGNATURES
-# -----------------------------------------------
+#UNKNOWN THREAT SIGNATURES
+
 KEYLOGGER_SIGNATURES = [
     'keylogger', 'klw', 'klog', 'revealer',
     'spyrix', 'refog', 'ardamax', 'blackbox',
@@ -34,9 +32,9 @@ SCREEN_RECORDER_SIGNATURES = [
     'action.exe', 'gamebar.exe',
 ]
 
-# -----------------------------------------------
-# WINDOWS API CONSTANTS
-# -----------------------------------------------
+
+# WINDOWS CONSTRAINTS 
+
 WH_KEYBOARD_LL = 13
 WM_KEYDOWN     = 0x0100
 VK_SNAPSHOT    = 0x2C
@@ -169,9 +167,9 @@ class SecurityManager:
         except Exception:
             pass
 
-    # -----------------------------------------------
-    # ANTI-DEBUG
-    # -----------------------------------------------
+
+# ANTI-DEBUG
+
 
     def is_debugger_attached(self) -> bool:
         """
@@ -196,9 +194,8 @@ class SecurityManager:
 
         return False
 
-    # -----------------------------------------------
-    # PROCESS SCANNER
-    # -----------------------------------------------
+ # PROCESS SCANNER
+
 
     def _scan_loop(self):
         """
@@ -317,11 +314,4 @@ class SecurityManager:
         except Exception:
             pass
 
-
-# -----------------------------------------------
-# GLOBAL INSTANCE
-# One shared SecurityManager for the whole app.
-# Import this instance wherever needed:
-#   from src.core.security import security
-# -----------------------------------------------
 security = SecurityManager()

@@ -1,7 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Login Screen
-# File: src/ui/login.py
-# -----------------------------------------------
+
 
 import sys
 import os
@@ -19,27 +17,27 @@ from PyQt6.QtCore import Qt, QTimer, pyqtSignal
 
 from src.core.crypto import verify_value, decrypt_json
 
-# -----------------------------------------------
+
 # PATHS
-# -----------------------------------------------
+
 APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 USER_DATA_FILE = APP_DATA_DIR / 'user.dat'
 
-# -----------------------------------------------
+
 # SETTINGS
-# -----------------------------------------------
+
 MAX_ATTEMPTS    = 5
 LOCKOUT_SECONDS = 300
 
-# -----------------------------------------------
+
 # DIMENSIONS
-# -----------------------------------------------
+
 WIN_W = 520
 WIN_H = 660
 
-# -----------------------------------------------
+
 # COLOURS
-# -----------------------------------------------
+
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -163,9 +161,9 @@ def mk_lbl(text, color=C_WHITE, size=13, bold=False,
     return l
 
 
-# -----------------------------------------------
+
 # HINTS OVERLAY
-# -----------------------------------------------
+
 class HintsOverlay(QWidget):
 
     back_requested = pyqtSignal()
@@ -335,9 +333,9 @@ class HintsOverlay(QWidget):
             self.wipe_requested.emit()
 
 
-# -----------------------------------------------
+
 # LOCKOUT SCREEN
-# -----------------------------------------------
+
 class LockoutScreen(QWidget):
 
     unlocked = pyqtSignal()
@@ -418,9 +416,9 @@ class LockoutScreen(QWidget):
             self.unlocked.emit()
 
 
-# -----------------------------------------------
+
 # LOGIN WINDOW
-# -----------------------------------------------
+
 class LoginWindow(QMainWindow):
     """
     Login screen shown on every app launch.
@@ -642,9 +640,9 @@ class LoginWindow(QMainWindow):
         layout.addWidget(self.hints_overlay)
         return widget
 
-    # -----------------------------------------------
-    # LOGIN LOGIC
-    # -----------------------------------------------
+
+# LOGIN LOGIC
+
 
     def _attempt_login(self):
         """
@@ -785,9 +783,9 @@ class LoginWindow(QMainWindow):
                 f"Could not delete data.\n\nError: {str(e)}"
             )
 
-    # -----------------------------------------------
-    # WINDOW DRAG
-    # -----------------------------------------------
+
+# WINDOW DRAG
+
 
     def mousePressEvent(self, event):
         if event.position().y() < 40:

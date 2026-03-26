@@ -1,27 +1,14 @@
-# -----------------------------------------------
 # Shuraksha - PyInstaller Build Script
-# File: tools/build.py
-# -----------------------------------------------
-# This script packages the entire Shuraksha project
-# into a standalone Windows .exe file.
-#
-# The output is a single folder in dist\Shuraksha
-# containing the .exe and all required files.
-# The Inno Setup installer then packages that folder
-# into a professional Windows installer.
-#
-# Run this script from the project root:
-#   python tools\build.py
-# -----------------------------------------------
+
 
 import subprocess
 import sys
 import shutil
 from pathlib import Path
 
-# -----------------------------------------------
+
 # PATHS
-# -----------------------------------------------
+
 ROOT       = Path(__file__).parent.parent
 MAIN_PY    = ROOT / 'src' / 'main.py'
 ICON_ICO   = ROOT / 'assets' / 'icons' / 'icon.ico'

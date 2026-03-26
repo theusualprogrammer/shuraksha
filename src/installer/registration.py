@@ -1,7 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Registration Wizard
-# File: src/installer/registration.py
-# -----------------------------------------------
+
 
 import sys
 import os
@@ -21,16 +19,16 @@ from PyQt6.QtCore import Qt
 
 from src.core.crypto import hash_value, encrypt_json
 
-# -----------------------------------------------
+
 # STORAGE PATHS
-# -----------------------------------------------
+
 APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 USER_DATA_FILE = APP_DATA_DIR / 'user.dat'
 VAULT_DIR      = APP_DATA_DIR / 'vault'
 
-# -----------------------------------------------
+
 # WINDOW DIMENSIONS
-# -----------------------------------------------
+
 WIN_W       = 1024
 WIN_H       = 720
 PROGRESS_H  = 3
@@ -40,9 +38,9 @@ NAVBAR_H    = 72
 SIDEBAR_W   = 240
 CONTENT_H   = WIN_H - PROGRESS_H - TITLEBAR_H - DIV_H - NAVBAR_H - DIV_H
 
-# -----------------------------------------------
+
 # COLOURS
-# -----------------------------------------------
+
 C_BG        = "#060912"
 C_SIDEBAR   = "#04060E"
 C_CARD      = "#080C18"
@@ -63,9 +61,9 @@ C_GHOST     = "#0E1E2E"
 C_RED       = "#FF3A1A"
 C_RED_BG    = "#1A0500"
 
-# -----------------------------------------------
+
 # BUTTON STYLES
-# -----------------------------------------------
+
 STYLE_CONTINUE = (
     f"QPushButton{{"
     f"  background-color:{C_CYAN};"
@@ -197,9 +195,9 @@ class RegistrationWizard(QMainWindow):
         self.setStyleSheet(STYLE_GLOBAL)
         self._build_layout()
 
-    # -----------------------------------------------
-    # HELPERS
-    # -----------------------------------------------
+
+# HELPERS
+
 
     def _hline(self):
         f = QFrame()
@@ -255,9 +253,8 @@ class RegistrationWizard(QMainWindow):
             f"padding-left:28px;"
         )
 
-    # -----------------------------------------------
-    # LAYOUT
-    # -----------------------------------------------
+# LAYOUT
+
 
     def _build_layout(self):
         root = QWidget()
@@ -513,9 +510,8 @@ class RegistrationWizard(QMainWindow):
 
         return nav
 
-    # -----------------------------------------------
-    # PAGE BUILDERS
-    # -----------------------------------------------
+# PAGE BUILDERS
+
 
     def _page_header(self, layout, badge, title, subtitle):
         if badge:
@@ -942,9 +938,9 @@ class RegistrationWizard(QMainWindow):
         v.addStretch()
         return page
 
-    # -----------------------------------------------
-    # NAVIGATION
-    # -----------------------------------------------
+
+# NAVIGATION
+
 
     def _go_next(self):
         if self.current_page == 1:
@@ -1032,9 +1028,8 @@ class RegistrationWizard(QMainWindow):
             else:
                 lbl.setStyleSheet(self._inactive_step_style())
 
-    # -----------------------------------------------
     # INPUT HELPERS
-    # -----------------------------------------------
+
 
     def _check_strength(self, pwd):
         score = 0
@@ -1099,26 +1094,6 @@ class RegistrationWizard(QMainWindow):
             f"font-family:'Consolas','Courier New',monospace;}}"
         )
         box.exec()
-
-    # -----------------------------------------------
-    # SAVE
-    # The most important method in registration.
-    #
-    # Structure written to user.dat:
-    # {
-    #   "password_hash": "...",   <- OUTSIDE encrypted blob
-    #   "password_salt": "...",   <- OUTSIDE encrypted blob
-    #   "encrypted": {            <- AES-256-GCM encrypted
-    #     "ciphertext": "...",
-    #     "nonce": "...",
-    #     "salt": "..."
-    #   }
-    # }
-    #
-    # password_hash and password_salt are outside so the
-    # login screen can verify the password WITHOUT decrypting.
-    # Only after verification does decryption happen.
-    # -----------------------------------------------
 
     def _save(self):
         try:
@@ -1185,9 +1160,9 @@ class RegistrationWizard(QMainWindow):
         if box.exec() == QMessageBox.StandardButton.Yes:
             QApplication.quit()
 
-    # -----------------------------------------------
-    # WINDOW DRAG
-    # -----------------------------------------------
+
+# WINDOW DRAG
+
 
     def mousePressEvent(self, event):
         if event.position().y() < PROGRESS_H + TITLEBAR_H:

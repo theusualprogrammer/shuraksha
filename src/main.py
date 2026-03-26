@@ -1,7 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Main Application Entry Point
-# File: src/main.py
-# -----------------------------------------------
+
 
 import sys
 import os
@@ -20,9 +18,9 @@ from src.ui.vault_dashboard  import VaultDashboard
 from src.ui.fake_vault2      import FakeVault2
 from src.installer.registration import RegistrationWizard
 
-# -----------------------------------------------
+
 # PATHS
-# -----------------------------------------------
+
 APP_DATA_DIR   = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 USER_DATA_FILE = APP_DATA_DIR / 'user.dat'
 
@@ -38,9 +36,9 @@ def is_registered() -> bool:
     )
 
 
-# -----------------------------------------------
+
 # APPLICATION CONTROLLER
-# -----------------------------------------------
+
 class ShurakshaApp:
     """
     Central controller managing every screen transition.
@@ -97,9 +95,9 @@ class ShurakshaApp:
         else:
             self._show_login()
 
-    # -----------------------------------------------
-    # REGISTRATION
-    # -----------------------------------------------
+
+# REGISTRATION
+
 
     def _show_registration(self):
         """
@@ -128,9 +126,9 @@ class ShurakshaApp:
                 pass
             self._show_login()
 
-    # -----------------------------------------------
-    # LOGIN
-    # -----------------------------------------------
+
+# LOGIN
+
 
     def _show_login(self):
         """Show the master password login screen."""
@@ -158,9 +156,9 @@ class ShurakshaApp:
 
         self._show_fake_dashboard()
 
-    # -----------------------------------------------
-    # FAKE DASHBOARD (decoy layer one)
-    # -----------------------------------------------
+
+# FAKE DASHBOARD (decoy layer one)
+
 
     def _show_fake_dashboard(self):
         """
@@ -180,9 +178,9 @@ class ShurakshaApp:
         )
         self.fake_dashboard.show()
 
-    # -----------------------------------------------
+
     # BODMAS SCREEN
-    # -----------------------------------------------
+
 
     def _show_bodmas(self):
         """
@@ -225,9 +223,9 @@ class ShurakshaApp:
 
         self.bodmas_screen.show()
 
-    # -----------------------------------------------
-    # REAL VAULT
-    # -----------------------------------------------
+
+# REAL VAULT
+
 
     def _show_vault(self):
         """
@@ -255,9 +253,9 @@ class ShurakshaApp:
         self.user_data        = {}
         self._show_login()
 
-    # -----------------------------------------------
-    # SECOND FAKE VAULT (decoy layer two)
-    # -----------------------------------------------
+
+# SECOND FAKE VAULT (decoy layer two)
+
 
     def _show_fake_vault2(self):
         """
@@ -288,9 +286,9 @@ class ShurakshaApp:
         """
         self._show_login()
 
-    # -----------------------------------------------
-    # UTILITIES
-    # -----------------------------------------------
+
+# UTILITIES
+
 
     def _hide_all(self):
         """
@@ -321,9 +319,9 @@ class ShurakshaApp:
         self.fake_vault2     = None
 
 
-# -----------------------------------------------
+
 # ENTRY POINT
-# -----------------------------------------------
+
 def main():
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough

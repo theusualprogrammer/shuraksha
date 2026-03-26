@@ -1,15 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - BODMAS Screen
-# File: src/ui/bodmas.py
-# -----------------------------------------------
-# Three possible outcomes:
-#   1. Input is correct DOB (DD/MM/YYYY)
-#      -> emits vault_access_granted (real vault)
-#   2. Input is the correct math answer
-#      -> emits fake_vault_access (second fake vault)
-#   3. Input is wrong
-#      -> counts as wrong attempt, lockout after MAX_WRONG
-# -----------------------------------------------
+
 
 import sys
 import re
@@ -28,14 +18,13 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 
 from src.core.crypto import verify_value
 
-# -----------------------------------------------
+
 # SETTINGS
-# -----------------------------------------------
+
 MAX_WRONG = 4
 
-# -----------------------------------------------
 # COLOURS
-# -----------------------------------------------
+
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -112,11 +101,9 @@ GLOBAL_STYLE = f"""
     }}
 """
 
-
-# -----------------------------------------------
 # BODMAS QUESTION GENERATOR
 # Generates a question AND stores the correct answer.
-# -----------------------------------------------
+
 class BodmasQuestion:
     """
     Generates a random BODMAS arithmetic question
@@ -178,9 +165,9 @@ class BodmasQuestion:
         self.instruction = random.choice(instructions)
 
 
-# -----------------------------------------------
+
 # FAKE CRASH SCREEN
-# -----------------------------------------------
+
 class FakeCrashScreen(QWidget):
 
     restart_requested = pyqtSignal()
@@ -271,9 +258,8 @@ class FakeCrashScreen(QWidget):
             v.addWidget(lbl)
 
 
-# -----------------------------------------------
 # BODMAS SCREEN
-# -----------------------------------------------
+
 class BodmasScreen(QMainWindow):
     """
     The fake BODMAS challenge screen.
@@ -310,9 +296,9 @@ class BodmasScreen(QMainWindow):
         self.setStyleSheet(GLOBAL_STYLE)
         self._build()
 
-    # -----------------------------------------------
-    # LAYOUT
-    # -----------------------------------------------
+
+# LAYOUT
+
 
     def _build(self):
         root = QWidget()
@@ -630,9 +616,9 @@ class BodmasScreen(QMainWindow):
         v.addStretch()
         return panel
 
-    # -----------------------------------------------
-    # TIMER
-    # -----------------------------------------------
+
+# TIMER
+
 
     def _tick_timer(self):
         self.countdown -= 1
@@ -656,9 +642,9 @@ class BodmasScreen(QMainWindow):
             f"background:transparent;"
         )
 
-    # -----------------------------------------------
-    # SUBMISSION LOGIC
-    # -----------------------------------------------
+
+# SUBMISSION LOGIC
+   
 
     def _submit(self):
         """
@@ -763,9 +749,9 @@ class BodmasScreen(QMainWindow):
         self.tick_timer.start(1000)
         self.stack.setCurrentIndex(0)
 
-    # -----------------------------------------------
-    # WINDOW DRAG
-    # -----------------------------------------------
+
+# WINDOW DRAG
+
 
     def mousePressEvent(self, event):
         if event.position().y() < 44:
@@ -783,9 +769,9 @@ class BodmasScreen(QMainWindow):
         self._drag_pos = None
 
 
-# -----------------------------------------------
+
 # ENTRY POINT
-# -----------------------------------------------
+
 if __name__ == '__main__':
     from src.core.crypto import hash_value
 

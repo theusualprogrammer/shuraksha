@@ -1,19 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Second Fake Vault
-# File: src/ui/fake_vault2.py
-# -----------------------------------------------
-# This vault appears when someone correctly solves
-# the BODMAS math question.
-# It looks and behaves exactly like the real vault
-# but everything is fake:
-#   - Files added get fake encrypted names
-#   - Fake file metadata is generated
-#   - Pre-loaded with convincing fake files
-#   - Credentials appear to save but are fake
-#   - Notes appear to save but are not real
-#   - Access log shows convincing fake entries
-#   - All operations show success messages
-# -----------------------------------------------
+
 
 import sys
 import random
@@ -33,22 +19,22 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 
-# -----------------------------------------------
+
 # DIMENSIONS
-# -----------------------------------------------
+
 WIN_W      = 1100
 WIN_H      = 720
 SIDEBAR_W  = 220
 TITLEBAR_H = 46
 
-# -----------------------------------------------
+
 # AUTO LOCK
-# -----------------------------------------------
+
 AUTO_LOCK_SECONDS = 300
 
-# -----------------------------------------------
+
 # COLOURS
-# -----------------------------------------------
+
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -70,9 +56,9 @@ C_GREEN    = "#00CC66"
 C_GREEN_BG = "#001A0A"
 C_AMBER    = "#FF8800"
 
-# -----------------------------------------------
+
 # BUTTON STYLES
-# -----------------------------------------------
+
 BTN_PRIMARY = (
     f"QPushButton{{"
     f"  background-color:{C_CYAN};"
@@ -180,12 +166,9 @@ GLOBAL_STYLE = f"""
 """
 
 
-# -----------------------------------------------
 # FAKE DATA GENERATORS
 # These generate convincing looking fake data
 # whenever a user adds something to this vault.
-# -----------------------------------------------
-
 # Fake file name pools by extension type
 FAKE_NAMES = {
     'document': [
@@ -420,9 +403,8 @@ def get_icon(name: str) -> str:
     return icons.get(ext, '📎')
 
 
-# -----------------------------------------------
 # HELPERS
-# -----------------------------------------------
+
 def mk(text, color=C_WHITE, size=13, bold=False,
        mono=False, wrap=False, align=None):
     l = QLabel(text)
@@ -449,9 +431,9 @@ def hline(color=C_BORDER):
     return f
 
 
-# -----------------------------------------------
+
 # FILE ROW WIDGET
-# -----------------------------------------------
+
 class FakeFileRow(QWidget):
     """A single fake file row in the vault list."""
 
@@ -617,9 +599,9 @@ class FakeCredRow(QWidget):
         )
 
 
-# -----------------------------------------------
+
 # SECOND FAKE VAULT
-# -----------------------------------------------
+
 class FakeVault2(QMainWindow):
     """
     The second fake vault dashboard.
@@ -679,9 +661,9 @@ class FakeVault2(QMainWindow):
         )
         self.panic.activated.connect(self._lock)
 
-    # -----------------------------------------------
-    # LAYOUT
-    # -----------------------------------------------
+
+# LAYOUT
+
 
     def _build(self):
         root = QWidget()
@@ -879,9 +861,9 @@ class FakeVault2(QMainWindow):
         elif key == 'notes': self._load_notes()
         elif key == 'log':   self._load_log()
 
-    # -----------------------------------------------
-    # FILES SECTION
-    # -----------------------------------------------
+
+# FILES SECTION
+
 
     def _build_files_section(self):
         widget = QWidget()
@@ -1048,9 +1030,9 @@ class FakeVault2(QMainWindow):
                 self._reload_files()
                 self._toast("// FILE SECURELY DELETED")
 
-    # -----------------------------------------------
-    # CREDENTIALS SECTION
-    # -----------------------------------------------
+
+# CREDENTIALS SECTION
+
 
     def _build_creds_section(self):
         widget = QWidget()
@@ -1197,9 +1179,9 @@ class FakeVault2(QMainWindow):
             )
             self._reload_creds()
 
-    # -----------------------------------------------
-    # NOTES SECTION
-    # -----------------------------------------------
+
+# NOTES SECTION
+
 
     def _build_notes_section(self):
         widget = QWidget()
@@ -1266,9 +1248,9 @@ class FakeVault2(QMainWindow):
         )
         self._toast("// NOTES SAVED AND ENCRYPTED")
 
-    # -----------------------------------------------
-    # LOG SECTION
-    # -----------------------------------------------
+
+# LOG SECTION
+
 
     def _build_log_section(self):
         widget = QWidget()
@@ -1343,9 +1325,9 @@ class FakeVault2(QMainWindow):
             self.log_viewer.clear()
             self._toast("// ACCESS LOG CLEARED")
 
-    # -----------------------------------------------
-    # STATUS BAR
-    # -----------------------------------------------
+
+# STATUS BAR
+
 
     def _build_statusbar(self):
         status = QWidget()
@@ -1367,9 +1349,9 @@ class FakeVault2(QMainWindow):
 
         return status
 
-    # -----------------------------------------------
-    # UTILITY
-    # -----------------------------------------------
+
+#UTILITY
+
 
     def _toast(self, message: str):
         """Show a brief status message at the bottom."""
@@ -1392,9 +1374,8 @@ class FakeVault2(QMainWindow):
         self.fake_log   = []
         self.lock_requested.emit()
 
-    # -----------------------------------------------
-    # WINDOW DRAG
-    # -----------------------------------------------
+# WINDOW DRAG
+
 
     def mousePressEvent(self, event):
         self._reset_idle()
@@ -1418,9 +1399,9 @@ class FakeVault2(QMainWindow):
         super().keyPressEvent(event)
 
 
-# -----------------------------------------------
+
 # ENTRY POINT
-# -----------------------------------------------
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')

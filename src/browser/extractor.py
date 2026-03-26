@@ -1,24 +1,4 @@
-# -----------------------------------------------
 # Shuraksha - Browser Password Extractor
-# File: src/browser/extractor.py
-# -----------------------------------------------
-# Extracts saved passwords from:
-#   - Google Chrome    (all profiles)
-#   - Microsoft Edge   (all profiles)
-#   - Brave Browser    (all profiles)
-#   - Mozilla Firefox  (all profiles)
-#   - Opera
-#   - Vivaldi
-#
-# Handles multiple profiles per browser:
-#   Default, Profile 1, Profile 2, etc.
-#
-# How Chromium extraction works:
-#   1. Each profile has its own Login Data SQLite db
-#   2. The AES key is in Local State (encrypted with DPAPI)
-#   3. We copy the db to a temp file (Chrome locks it)
-#   4. Decrypt each password with the AES key
-# -----------------------------------------------
 
 import os
 import re
@@ -44,9 +24,8 @@ except ImportError:
     CRYPTO_AVAILABLE = False
 
 
-# -----------------------------------------------
 # BROWSER PATHS
-# -----------------------------------------------
+
 LOCAL  = Path(os.environ.get('LOCALAPPDATA', ''))
 ROAM   = Path(os.environ.get('APPDATA', ''))
 
@@ -114,9 +93,9 @@ class BrowserExtractor:
 
         return results
 
-    # -----------------------------------------------
-    # CHROMIUM
-    # -----------------------------------------------
+
+# CHROMIUM
+
 
     def _get_encryption_key(self, base_path: Path) -> Optional[bytes]:
         """
@@ -346,9 +325,9 @@ class BrowserExtractor:
 
         return results
 
-    # -----------------------------------------------
-    # FIREFOX
-    # -----------------------------------------------
+
+# FIREFOX
+
 
     def _extract_firefox(self) -> List[Dict]:
         """
@@ -428,9 +407,9 @@ class BrowserExtractor:
 
         return results
 
-    # -----------------------------------------------
-    # UTILITIES
-    # -----------------------------------------------
+
+# UTILITIES
+
 
     def _clean_url(self, url: str) -> str:
         """

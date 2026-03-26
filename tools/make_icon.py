@@ -1,16 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Icon Generator
-# File: tools/make_icon.py
-# -----------------------------------------------
-# This script creates the Windows .ico file from
-# the Shuraksha logo design.
-#
-# It generates all required icon sizes:
-#   16x16, 32x32, 48x48, 64x64, 128x128, 256x256
-# All sizes are packed into one .ico file.
-# This is required by Windows for the taskbar,
-# desktop shortcut, and installer.
-# -----------------------------------------------
+
 
 import sys
 from pathlib import Path

@@ -1,7 +1,5 @@
-# -----------------------------------------------
 # Shuraksha - Real Vault Dashboard
-# File: src/ui/vault_dashboard.py
-# -----------------------------------------------
+
 
 import sys
 import os
@@ -31,9 +29,8 @@ except Exception:
     security           = None
     SECURITY_AVAILABLE = False
 
-# -----------------------------------------------
 # PATHS
-# -----------------------------------------------
+
 APP_DATA_DIR = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 VAULT_DIR    = APP_DATA_DIR / 'vault'
 FILES_DIR    = VAULT_DIR / 'files'
@@ -42,22 +39,22 @@ CREDS_FILE   = VAULT_DIR / 'creds.dat'
 NOTES_FILE   = VAULT_DIR / 'notes.dat'
 LOG_FILE     = VAULT_DIR / 'access.log'
 
-# -----------------------------------------------
+
 # SETTINGS
-# -----------------------------------------------
+
 AUTO_LOCK_SECONDS = 300
 
-# -----------------------------------------------
+
 # DIMENSIONS
-# -----------------------------------------------
+
 WIN_W      = 1100
 WIN_H      = 720
 SIDEBAR_W  = 220
 TITLEBAR_H = 46
 
-# -----------------------------------------------
+
 # COLOURS
-# -----------------------------------------------
+
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -79,9 +76,9 @@ C_GREEN    = "#00CC66"
 C_GREEN_BG = "#001A0A"
 C_AMBER    = "#FF8800"
 
-# -----------------------------------------------
+
 # BUTTON STYLES
-# -----------------------------------------------
+
 BTN_PRIMARY = (
     f"QPushButton{{"
     f"  background-color:{C_CYAN};"
@@ -192,9 +189,9 @@ GLOBAL_STYLE = f"""
 """
 
 
-# -----------------------------------------------
+
 # HELPERS
-# -----------------------------------------------
+
 def mk(text, color=C_WHITE, size=13, bold=False,
        mono=False, wrap=False, align=None):
     l = QLabel(text)
@@ -236,9 +233,9 @@ def write_log(entry: str):
         pass
 
 
-# -----------------------------------------------
+
 # VAULT MANAGER
-# -----------------------------------------------
+
 class VaultManager:
     """
     Handles all encrypted file and data operations.
@@ -360,9 +357,9 @@ class VaultManager:
             return "// Could not read access log."
 
 
-# -----------------------------------------------
+
 # FILE ROW
-# -----------------------------------------------
+
 class FileRow(QWidget):
 
     export_requested = pyqtSignal(str)
@@ -445,9 +442,9 @@ class FileRow(QWidget):
         return f"{b/1024**3:.1f} GB"
 
 
-# -----------------------------------------------
+
 # CREDENTIAL ROW
-# -----------------------------------------------
+
 class CredRow(QWidget):
 
     delete_requested = pyqtSignal(int)
@@ -541,9 +538,9 @@ class CredRow(QWidget):
             )
 
 
-# -----------------------------------------------
+
 # VAULT DASHBOARD
-# -----------------------------------------------
+
 class VaultDashboard(QMainWindow):
     """
     The real encrypted vault dashboard.
@@ -581,9 +578,9 @@ class VaultDashboard(QMainWindow):
         write_log(f"VAULT_OPENED  operator:{self.username}")
         QTimer.singleShot(500, self._start_security)
 
-    # -----------------------------------------------
-    # SECURITY
-    # -----------------------------------------------
+
+# SECURITY
+
 
     def _start_security(self):
         try:
@@ -604,9 +601,9 @@ class VaultDashboard(QMainWindow):
         except Exception:
             pass
 
-    # -----------------------------------------------
-    # LAYOUT
-    # -----------------------------------------------
+
+# LAYOUT
+
 
     def _build(self):
         root = QWidget()
@@ -808,9 +805,9 @@ class VaultDashboard(QMainWindow):
         elif key == 'notes': self._load_notes()
         elif key == 'log':   self._load_log()
 
-    # -----------------------------------------------
-    # FILES SECTION
-    # -----------------------------------------------
+
+# FILES SECTION
+
 
     def _build_files_section(self):
         widget = QWidget()
@@ -955,9 +952,8 @@ class VaultDashboard(QMainWindow):
             except Exception as e:
                 self._err(f"Delete failed:\n{e}")
 
-    # -----------------------------------------------
-    # CREDENTIALS SECTION
-    # -----------------------------------------------
+# CREDENTIALS SECTION
+
 
     def _build_creds_section(self):
         widget = QWidget()
@@ -1261,9 +1257,9 @@ class VaultDashboard(QMainWindow):
                 f"before importing."
             )
 
-    # -----------------------------------------------
-    # NOTES SECTION
-    # -----------------------------------------------
+
+#OTES SECTION
+
 
     def _build_notes_section(self):
         widget = QWidget()
@@ -1327,9 +1323,9 @@ class VaultDashboard(QMainWindow):
         except Exception as e:
             self._err(f"Failed to save notes:\n{e}")
 
-    # -----------------------------------------------
-    # LOG SECTION
-    # -----------------------------------------------
+
+# LOG SECTION
+
 
     def _build_log_section(self):
         widget = QWidget()
@@ -1393,9 +1389,9 @@ class VaultDashboard(QMainWindow):
         except Exception as e:
             self._err(f"Could not clear log:\n{e}")
 
-    # -----------------------------------------------
-    # STATUS BAR
-    # -----------------------------------------------
+
+# STATUS BAR
+
 
     def _build_statusbar(self):
         status = QWidget()
@@ -1418,9 +1414,9 @@ class VaultDashboard(QMainWindow):
 
         return status
 
-    # -----------------------------------------------
-    # UTILITY
-    # -----------------------------------------------
+
+# UTILITY
+
 
     def _toast(self, message: str):
         self.toast_lbl.setText(message)
@@ -1482,9 +1478,8 @@ class VaultDashboard(QMainWindow):
         super().keyPressEvent(event)
 
 
-# -----------------------------------------------
 # ENTRY POINT
-# -----------------------------------------------
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
