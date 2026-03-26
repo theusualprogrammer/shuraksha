@@ -1,14 +1,25 @@
 # -----------------------------------------------
-# Shuraksha - Real Vault Dashboard
-# File: src/ui/vault_dashboard.py
+# Shuraksha - Second Fake Vault
+# File: src/ui/fake_vault2.py
+# -----------------------------------------------
+# This vault appears when someone correctly solves
+# the BODMAS math question.
+# It looks and behaves exactly like the real vault
+# but everything is fake:
+#   - Files added get fake encrypted names
+#   - Fake file metadata is generated
+#   - Pre-loaded with convincing fake files
+#   - Credentials appear to save but are fake
+#   - Notes appear to save but are not real
+#   - Access log shows convincing fake entries
+#   - All operations show success messages
 # -----------------------------------------------
 
 import sys
-import os
-import json
-import secrets
+import random
+import string
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
@@ -22,31 +33,6 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QKeySequence, QShortcut
 
-from src.core.crypto import encrypt_json, decrypt_json
-
-try:
-    from src.core.security import security
-    SECURITY_AVAILABLE = True
-except Exception:
-    security           = None
-    SECURITY_AVAILABLE = False
-
-# -----------------------------------------------
-# PATHS
-# -----------------------------------------------
-APP_DATA_DIR = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
-VAULT_DIR    = APP_DATA_DIR / 'vault'
-FILES_DIR    = VAULT_DIR / 'files'
-META_FILE    = VAULT_DIR / 'meta.dat'
-CREDS_FILE   = VAULT_DIR / 'creds.dat'
-NOTES_FILE   = VAULT_DIR / 'notes.dat'
-LOG_FILE     = VAULT_DIR / 'access.log'
-
-# -----------------------------------------------
-# SETTINGS
-# -----------------------------------------------
-AUTO_LOCK_SECONDS = 300
-
 # -----------------------------------------------
 # DIMENSIONS
 # -----------------------------------------------
@@ -54,6 +40,11 @@ WIN_W      = 1100
 WIN_H      = 720
 SIDEBAR_W  = 220
 TITLEBAR_H = 46
+
+# -----------------------------------------------
+# AUTO LOCK
+# -----------------------------------------------
+AUTO_LOCK_SECONDS = 300
 
 # -----------------------------------------------
 # COLOURS
@@ -95,9 +86,6 @@ BTN_PRIMARY = (
     f"QPushButton:hover{{"
     f"  background-color:{C_CYAN_H};"
     f"  color:#000000;"
-    f"}}"
-    f"QPushButton:pressed{{"
-    f"  background-color:#20A0CC;"
     f"}}"
 )
 
@@ -193,6 +181,246 @@ GLOBAL_STYLE = f"""
 
 
 # -----------------------------------------------
+# FAKE DATA GENERATORS
+# These generate convincing looking fake data
+# whenever a user adds something to this vault.
+# -----------------------------------------------
+
+# Fake file name pools by extension type
+FAKE_NAMES = {
+    'document': [
+        "Tax_Return_{year}.pdf",
+        "Insurance_Policy_{year}.pdf",
+        "Bank_Statement_{month}_{year}.pdf",
+        "Medical_Records_{year}.pdf",
+        "Property_Agreement_{year}.pdf",
+        "Employment_Contract_{year}.pdf",
+        "Legal_Notice_{year}.pdf",
+        "Passport_Scan_{year}.pdf",
+        "Driving_Licence_Copy.pdf",
+        "Salary_Slip_{month}_{year}.pdf",
+        "Loan_Agreement_{year}.pdf",
+        "Investment_Statement_{year}.pdf",
+    ],
+    'image': [
+        "Family_Photo_{year}.jpg",
+        "Vacation_{month}_{year}.jpg",
+        "ID_Card_Scan.png",
+        "Profile_Backup_{year}.jpg",
+        "Screenshot_{date}.png",
+        "Document_Scan_{date}.jpg",
+        "Receipt_{date}.jpg",
+        "Certificate_{year}.png",
+    ],
+    'video': [
+        "Birthday_{year}.mp4",
+        "Meeting_Recording_{date}.mp4",
+        "Family_Event_{month}_{year}.mp4",
+        "Backup_Clip_{date}.avi",
+        "Interview_{date}.mp4",
+        "Tutorial_Recording_{date}.mkv",
+    ],
+    'audio': [
+        "Voice_Note_{date}.mp3",
+        "Meeting_Audio_{date}.mp3",
+        "Recording_{date}.wav",
+        "Backup_Audio_{date}.mp3",
+    ],
+    'archive': [
+        "Project_Backup_{year}.zip",
+        "Documents_{month}_{year}.zip",
+        "Photos_{year}.zip",
+        "Work_Files_{date}.zip",
+        "Archive_{date}.rar",
+    ],
+    'code': [
+        "Project_Source_{year}.zip",
+        "Backup_Scripts_{date}.py",
+        "Work_Code_{date}.zip",
+    ],
+    'other': [
+        "Important_File_{date}",
+        "Backup_{date}",
+        "Document_{date}",
+        "Secure_File_{date}",
+    ],
+}
+
+# Fake file sizes
+FAKE_SIZES = [
+    "128 KB", "256 KB", "512 KB",
+    "1.2 MB", "2.4 MB", "3.7 MB",
+    "5.1 MB", "8.3 MB", "12.4 MB",
+    "24.6 MB", "48.2 MB", "96.1 MB",
+]
+
+# Pre-loaded fake files to show on first open
+PRELOADED_FILES = [
+    ("📑", "Tax_Returns_2024.pdf",         "1.2 MB",  "12 Jan 2025"),
+    ("🖼",  "Family_Vacation_Photos.zip",   "48.3 MB", "3 Mar 2025"),
+    ("📄", "Insurance_Policy_2025.pdf",     "890 KB",  "22 Feb 2025"),
+    ("📄", "Bank_Statement_March2025.pdf",  "234 KB",  "1 Mar 2025"),
+    ("💻", "Work_Project_Backup.zip",       "12.4 MB", "18 Mar 2025"),
+    ("📑", "Medical_Records_2024.pdf",      "2.1 MB",  "9 Dec 2024"),
+    ("🖼",  "Passport_Scan.jpg",            "3.4 MB",  "5 Jan 2025"),
+    ("📄", "Property_Documents.pdf",        "5.7 MB",  "28 Feb 2025"),
+]
+
+# Pre-loaded fake credentials
+PRELOADED_CREDS = [
+    {
+        'site'    : 'Gmail',
+        'username': 'user.backup@gmail.com',
+        'password': 'G$3kP@ss2024!',
+        'added'   : '10 Jan 2025',
+    },
+    {
+        'site'    : 'LinkedIn',
+        'username': 'professional.user@outlook.com',
+        'password': 'Link3dIn#Secure',
+        'added'   : '15 Jan 2025',
+    },
+    {
+        'site'    : 'Online Banking',
+        'username': 'account.holder@bank.com',
+        'password': 'B@nk$ecure2024',
+        'added'   : '20 Jan 2025',
+    },
+    {
+        'site'    : 'Instagram',
+        'username': '@user_profile_backup',
+        'password': 'Insta#2024Pass',
+        'added'   : '25 Jan 2025',
+    },
+]
+
+# Pre-loaded fake notes
+PRELOADED_NOTES = """// Personal secure notes
+
+Important account numbers:
+  - Savings account:  XXXX-XXXX-4821
+  - Credit card:      XXXX-XXXX-XXXX-7734
+  - Insurance policy: POL-2024-88421
+
+Emergency contacts:
+  - Dr. Sharma:  +91 98765 43210
+  - Lawyer:      +91 87654 32109
+
+Locker combination: 14 - 27 - 39
+
+House keys: spare set at main drawer
+
+Vehicle insurance renewal: March 2026
+
+Note to self: review investments by April 2025
+"""
+
+# Pre-loaded fake access log entries
+PRELOADED_LOG = [
+    "[2025-01-10  09:14:22]  VAULT_OPENED  operator:user",
+    "[2025-01-10  09:18:43]  FILE_ADDED  Tax_Returns_2024.pdf",
+    "[2025-01-15  14:22:11]  VAULT_OPENED  operator:user",
+    "[2025-01-15  14:25:38]  CREDENTIAL_ADDED  LinkedIn",
+    "[2025-01-20  11:08:55]  VAULT_OPENED  operator:user",
+    "[2025-01-20  11:12:04]  FILE_ADDED  Insurance_Policy_2025.pdf",
+    "[2025-02-01  16:44:19]  VAULT_OPENED  operator:user",
+    "[2025-02-01  16:48:32]  NOTES_SAVED",
+    "[2025-03-18  10:33:07]  VAULT_OPENED  operator:user",
+    "[2025-03-18  10:36:21]  FILE_ADDED  Work_Project_Backup.zip",
+]
+
+
+def _fake_date() -> str:
+    """Generate a realistic recent date string."""
+    now  = datetime.now()
+    days = random.randint(1, 90)
+    dt   = now - timedelta(days=days)
+    return dt.strftime("%d %b %Y  %H:%M")
+
+
+def _fake_short_date() -> str:
+    now  = datetime.now()
+    days = random.randint(1, 60)
+    dt   = now - timedelta(days=days)
+    return dt.strftime("%d %b %Y")
+
+
+def _fake_log_timestamp() -> str:
+    now  = datetime.now()
+    secs = random.randint(60, 3600 * 24 * 30)
+    dt   = now - timedelta(seconds=secs)
+    return dt.strftime("%Y-%m-%d  %H:%M:%S")
+
+
+def generate_fake_filename(real_name: str) -> str:
+    """
+    Given the real filename, generate a convincing
+    fake filename of the same type.
+    For example:
+        mypassport.jpg -> Passport_Scan_2025.jpg
+        budget.xlsx    -> Bank_Statement_March_2025.pdf
+    """
+    ext  = Path(real_name).suffix.lower()
+    now  = datetime.now()
+
+    months = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ]
+    subs = {
+        'year' : str(now.year),
+        'month': months[now.month - 1],
+        'date' : now.strftime("%d%m%Y"),
+    }
+
+    if ext in ['.pdf', '.doc', '.docx', '.txt', '.xlsx']:
+        pool = FAKE_NAMES['document']
+        fake_ext = ext
+    elif ext in ['.jpg', '.jpeg', '.png', '.bmp', '.webp']:
+        pool = FAKE_NAMES['image']
+        fake_ext = ext
+    elif ext in ['.mp4', '.avi', '.mkv', '.mov']:
+        pool = FAKE_NAMES['video']
+        fake_ext = ext
+    elif ext in ['.mp3', '.wav', '.flac', '.aac']:
+        pool = FAKE_NAMES['audio']
+        fake_ext = ext
+    elif ext in ['.zip', '.rar', '.7z']:
+        pool = FAKE_NAMES['archive']
+        fake_ext = ext
+    elif ext in ['.py', '.js', '.html', '.css']:
+        pool = FAKE_NAMES['code']
+        fake_ext = ext
+    else:
+        pool = FAKE_NAMES['other']
+        fake_ext = ext or '.dat'
+
+    template = random.choice(pool)
+    name     = template.format(**subs)
+
+    # Make sure the extension matches
+    if not name.endswith(fake_ext):
+        name = Path(name).stem + fake_ext
+
+    return name
+
+
+def get_icon(name: str) -> str:
+    ext = Path(name).suffix.lower()
+    icons = {
+        '.jpg': '🖼', '.jpeg': '🖼', '.png': '🖼',
+        '.gif': '🖼', '.bmp': '🖼', '.webp': '🖼',
+        '.mp4': '🎬', '.avi': '🎬', '.mkv': '🎬',
+        '.mp3': '🎵', '.wav': '🎵', '.flac': '🎵',
+        '.pdf': '📑', '.doc': '📄', '.docx': '📄',
+        '.txt': '📄', '.xlsx': '📄',
+        '.zip': '🗜', '.rar': '🗜',
+        '.py':  '💻', '.js':  '💻',
+    }
+    return icons.get(ext, '📎')
+
+
+# -----------------------------------------------
 # HELPERS
 # -----------------------------------------------
 def mk(text, color=C_WHITE, size=13, bold=False,
@@ -221,234 +449,83 @@ def hline(color=C_BORDER):
     return f
 
 
-def write_log(entry: str):
-    """
-    Write a timestamped entry to the access log.
-    Defined at module level so security.py can call
-    it without causing a circular import.
-    """
-    try:
-        LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-        ts = datetime.now().strftime("%Y-%m-%d  %H:%M:%S")
-        with open(LOG_FILE, 'a', encoding='utf-8') as f:
-            f.write(f"[{ts}]  {entry}\n")
-    except Exception:
-        pass
-
-
 # -----------------------------------------------
-# VAULT MANAGER
+# FILE ROW WIDGET
 # -----------------------------------------------
-class VaultManager:
-    """
-    Handles all encrypted file and data operations.
-    All content is encrypted with AES-256-GCM.
-    No plaintext ever sits on disk.
-    """
+class FakeFileRow(QWidget):
+    """A single fake file row in the vault list."""
 
-    def __init__(self, master_password: str):
-        self.password = master_password
-        FILES_DIR.mkdir(parents=True, exist_ok=True)
+    delete_requested = pyqtSignal(int)
 
-    def load_meta(self) -> list:
-        if not META_FILE.exists():
-            return []
-        try:
-            with open(META_FILE, 'r') as f:
-                enc = json.load(f)
-            data = decrypt_json(enc, self.password)
-            return data.get('files', [])
-        except Exception:
-            return []
-
-    def save_meta(self, files: list):
-        try:
-            enc = encrypt_json({'files': files}, self.password)
-            with open(META_FILE, 'w') as f:
-                json.dump(enc, f)
-        except Exception as e:
-            raise Exception(f"Failed to save metadata: {e}")
-
-    def add_file(self, source_path: Path) -> dict:
-        data     = source_path.read_bytes()
-        vault_id = secrets.token_hex(16)
-        enc      = encrypt_json(
-            {'data': data.hex(), 'name': source_path.name},
-            self.password
-        )
-        dest = FILES_DIR / vault_id
-        with open(dest, 'w') as f:
-            json.dump(enc, f)
-
-        meta = {
-            'id'   : vault_id,
-            'name' : source_path.name,
-            'size' : len(data),
-            'added': datetime.now().strftime("%d %b %Y  %H:%M"),
-            'type' : source_path.suffix.lower() or 'file',
-        }
-        files = self.load_meta()
-        files.append(meta)
-        self.save_meta(files)
-        write_log(f"FILE_ADDED  {source_path.name}")
-        return meta
-
-    def export_file(self, vault_id: str, dest_dir: Path) -> Path:
-        vault_path = FILES_DIR / vault_id
-        if not vault_path.exists():
-            raise Exception("Vault file not found.")
-        with open(vault_path, 'r') as f:
-            enc = json.load(f)
-        data_dict = decrypt_json(enc, self.password)
-        raw       = bytes.fromhex(data_dict['data'])
-        name      = data_dict['name']
-        out_path  = dest_dir / name
-        out_path.write_bytes(raw)
-        write_log(f"FILE_EXPORTED  {name}")
-        return out_path
-
-    def delete_file(self, vault_id: str):
-        vault_path = FILES_DIR / vault_id
-        if vault_path.exists():
-            size = vault_path.stat().st_size
-            for _ in range(3):
-                vault_path.write_bytes(secrets.token_bytes(size))
-            vault_path.unlink()
-        files = self.load_meta()
-        files = [f for f in files if f['id'] != vault_id]
-        self.save_meta(files)
-        write_log(f"FILE_DELETED  {vault_id}")
-
-    def load_creds(self) -> list:
-        if not CREDS_FILE.exists():
-            return []
-        try:
-            with open(CREDS_FILE, 'r') as f:
-                enc = json.load(f)
-            data = decrypt_json(enc, self.password)
-            return data.get('creds', [])
-        except Exception:
-            return []
-
-    def save_creds(self, creds: list):
-        enc = encrypt_json({'creds': creds}, self.password)
-        with open(CREDS_FILE, 'w') as f:
-            json.dump(enc, f)
-
-    def load_notes(self) -> str:
-        if not NOTES_FILE.exists():
-            return ""
-        try:
-            with open(NOTES_FILE, 'r') as f:
-                enc = json.load(f)
-            data = decrypt_json(enc, self.password)
-            return data.get('content', "")
-        except Exception:
-            return ""
-
-    def save_notes(self, content: str):
-        enc = encrypt_json({'content': content}, self.password)
-        with open(NOTES_FILE, 'w') as f:
-            json.dump(enc, f)
-
-    def load_log(self) -> str:
-        if not LOG_FILE.exists():
-            return "// No access log entries yet."
-        try:
-            return LOG_FILE.read_text(encoding='utf-8')
-        except Exception:
-            return "// Could not read access log."
-
-
-# -----------------------------------------------
-# FILE ROW
-# -----------------------------------------------
-class FileRow(QWidget):
-
-    export_requested = pyqtSignal(str)
-    delete_requested = pyqtSignal(str)
-
-    def __init__(self, meta: dict, parent=None):
+    def __init__(self, index: int, icon: str, name: str,
+                 size: str, date: str, parent=None):
         super().__init__(parent)
-        self.vault_id = meta['id']
-        self._build(meta)
+        self.index = index
+        self._build(icon, name, size, date)
 
-    def _build(self, meta: dict):
+    def _build(self, icon, name, size, date):
         self.setFixedHeight(56)
         self.setStyleSheet(
             f"QWidget{{background:{C_CARD};"
             f"border-bottom:1px solid {C_BORDER};}}"
         )
+
         h = QHBoxLayout(self)
         h.setContentsMargins(20, 0, 16, 0)
         h.setSpacing(16)
 
-        icon_lbl = QLabel(self._get_icon(meta.get('type', '')))
+        icon_lbl = QLabel(icon)
         icon_lbl.setStyleSheet(
             "font-size:20px;background:transparent;"
         )
         icon_lbl.setFixedWidth(28)
         h.addWidget(icon_lbl)
 
-        name_lbl = mk(meta['name'], C_WHITE, 13, bold=True)
+        name_lbl = mk(name, C_WHITE, 13, bold=True)
         name_lbl.setMinimumWidth(200)
         h.addWidget(name_lbl)
         h.addStretch()
 
-        size_lbl = mk(
-            self._fmt_size(meta.get('size', 0)),
-            C_DIM, 12, mono=True
-        )
+        size_lbl = mk(size, C_DIM, 12, mono=True)
         size_lbl.setFixedWidth(80)
         size_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         h.addWidget(size_lbl)
 
-        date_lbl = mk(
-            meta.get('added', ''), C_DIM, 12, mono=True
-        )
+        date_lbl = mk(date, C_DIM, 12, mono=True)
         date_lbl.setFixedWidth(160)
         date_lbl.setAlignment(Qt.AlignmentFlag.AlignRight)
         h.addWidget(date_lbl)
 
+        # Export button - shows success but does nothing real
         exp_btn = QPushButton("EXPORT")
         exp_btn.setFixedSize(80, 32)
         exp_btn.setStyleSheet(BTN_GHOST)
-        exp_btn.clicked.connect(
-            lambda: self.export_requested.emit(self.vault_id)
-        )
+        exp_btn.clicked.connect(self._fake_export)
         h.addWidget(exp_btn)
 
+        # Delete button - removes from the fake list
         del_btn = QPushButton("DELETE")
         del_btn.setFixedSize(80, 32)
         del_btn.setStyleSheet(BTN_DANGER)
         del_btn.clicked.connect(
-            lambda: self.delete_requested.emit(self.vault_id)
+            lambda: self.delete_requested.emit(self.index)
         )
         h.addWidget(del_btn)
 
-    def _get_icon(self, ext: str) -> str:
-        icons = {
-            '.jpg': '🖼', '.jpeg': '🖼', '.png': '🖼',
-            '.gif': '🖼', '.bmp': '🖼', '.webp': '🖼',
-            '.mp4': '🎬', '.avi': '🎬', '.mkv': '🎬',
-            '.mp3': '🎵', '.wav': '🎵', '.flac': '🎵',
-            '.pdf': '📑', '.doc': '📄', '.docx': '📄',
-            '.txt': '📄', '.zip': '🗜', '.rar': '🗜',
-            '.py':  '💻', '.js':  '💻',
-        }
-        return icons.get(ext, '📎')
-
-    def _fmt_size(self, b: int) -> str:
-        if b < 1024:    return f"{b} B"
-        if b < 1024**2: return f"{b//1024} KB"
-        if b < 1024**3: return f"{b//1024**2} MB"
-        return f"{b/1024**3:.1f} GB"
+    def _fake_export(self):
+        """Show a convincing export success message."""
+        QMessageBox.information(
+            self, "// EXPORT COMPLETE",
+            "File decrypted and exported successfully.\n\n"
+            "Saved to Downloads folder."
+        )
 
 
 # -----------------------------------------------
-# CREDENTIAL ROW
+# CREDENTIAL ROW WIDGET
 # -----------------------------------------------
-class CredRow(QWidget):
+class FakeCredRow(QWidget):
+    """A single fake credential row."""
 
     delete_requested = pyqtSignal(int)
 
@@ -465,6 +542,7 @@ class CredRow(QWidget):
             f"QWidget{{background:{C_CARD};"
             f"border-bottom:1px solid {C_BORDER};}}"
         )
+
         h = QHBoxLayout(self)
         h.setContentsMargins(20, 0, 16, 0)
         h.setSpacing(16)
@@ -531,38 +609,60 @@ class CredRow(QWidget):
             self.show_btn.setText("SHOW")
 
     def _copy_pwd(self):
+        """Copy the fake password to clipboard."""
         QApplication.clipboard().setText(self._pwd_text)
-        if SECURITY_AVAILABLE and security:
-            security.schedule_clipboard_clear(30)
-        else:
-            QTimer.singleShot(
-                30000,
-                lambda: QApplication.clipboard().setText("")
-            )
+        QTimer.singleShot(
+            30000,
+            lambda: QApplication.clipboard().setText("")
+        )
 
 
 # -----------------------------------------------
-# VAULT DASHBOARD
+# SECOND FAKE VAULT
 # -----------------------------------------------
-class VaultDashboard(QMainWindow):
+class FakeVault2(QMainWindow):
     """
-    The real encrypted vault dashboard.
-    Only reachable after correct DOB on BODMAS screen.
+    The second fake vault dashboard.
+
+    Triggered when someone correctly solves the
+    BODMAS math question instead of typing the DOB.
+
+    Fully interactive:
+        - Add files  -> generates convincing fake names
+        - Delete files
+        - Export files -> shows success message
+        - Add credentials -> saves fake entries
+        - Edit secure notes -> saves to memory only
+        - Access log -> shows convincing fake history
+        - All operations show proper success toasts
+
+    Nothing is actually encrypted or stored permanently.
+    Session data exists only in memory.
+    On lock all session data is wiped.
     """
 
     lock_requested = pyqtSignal()
 
-    def __init__(self, user_data: dict,
-                 master_password: str, parent=None):
+    def __init__(self, username: str = "User", parent=None):
         super().__init__(parent)
 
-        self.user_data      = user_data
-        self.username       = user_data.get('username', 'Operator')
-        self.vault          = VaultManager(master_password)
-        self.active_section = 'files'
+        self.username = username
+
+        # In-memory fake data storage
+        # Nothing is written to disk
+        self.fake_files = list(PRELOADED_FILES)
+        self.fake_creds = list(PRELOADED_CREDS)
+        self.fake_notes = PRELOADED_NOTES
+        self.fake_log   = list(PRELOADED_LOG)
+
+        # Add a fresh login entry to the log
+        self.fake_log.append(
+            f"[{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}]"
+            f"  VAULT_OPENED  operator:{username}"
+        )
 
         self.idle_timer = QTimer(self)
-        self.idle_timer.timeout.connect(self._auto_lock)
+        self.idle_timer.timeout.connect(self._lock)
         self.idle_timer.start(AUTO_LOCK_SECONDS * 1000)
 
         self.setWindowTitle("Shuraksha Vault")
@@ -573,36 +673,11 @@ class VaultDashboard(QMainWindow):
         self.setStyleSheet(GLOBAL_STYLE)
         self._build()
 
+        # Panic button
         self.panic = QShortcut(
             QKeySequence("Ctrl+Shift+X"), self
         )
-        self.panic.activated.connect(self._instant_lock)
-
-        write_log(f"VAULT_OPENED  operator:{self.username}")
-        QTimer.singleShot(500, self._start_security)
-
-    # -----------------------------------------------
-    # SECURITY
-    # -----------------------------------------------
-
-    def _start_security(self):
-        try:
-            if SECURITY_AVAILABLE and security:
-                security.set_lock_callback(self._instant_lock)
-                security.start()
-                hwnd = int(self.winId())
-                security.block_screenshot_api(hwnd)
-        except Exception:
-            pass
-
-    def _stop_security(self):
-        try:
-            if SECURITY_AVAILABLE and security:
-                security.stop()
-                hwnd = int(self.winId())
-                security.unblock_screenshot_api(hwnd)
-        except Exception:
-            pass
+        self.panic.activated.connect(self._lock)
 
     # -----------------------------------------------
     # LAYOUT
@@ -661,15 +736,15 @@ class VaultDashboard(QMainWindow):
         ))
         h.addSpacing(20)
 
-        panic_btn = QPushButton("[ LOCK  Ctrl+Shift+X ]")
-        panic_btn.setStyleSheet(
-            f"QPushButton{{background:transparent;"
-            f"color:{C_DIM};border:none;font-size:11px;"
+        lock_btn = QPushButton("[ LOCK  Ctrl+Shift+X ]")
+        lock_btn.setStyleSheet(
+            f"QPushButton{{background:transparent;color:{C_DIM};"
+            f"border:none;font-size:11px;"
             f"font-family:'Consolas','Courier New',monospace;}}"
             f"QPushButton:hover{{color:{C_RED};}}"
         )
-        panic_btn.clicked.connect(self._instant_lock)
-        h.addWidget(panic_btn)
+        lock_btn.clicked.connect(self._lock)
+        h.addWidget(lock_btn)
 
         return bar
 
@@ -694,6 +769,7 @@ class VaultDashboard(QMainWindow):
         bl.addWidget(brand)
         bl.addWidget(mk("> vault_v1.0", C_DIM, 11, mono=True))
         v.addLayout(bl)
+
         v.addSpacing(20)
         v.addWidget(hline())
         v.addSpacing(16)
@@ -745,9 +821,8 @@ class VaultDashboard(QMainWindow):
                 nl = QLabel(label)
                 nl.setStyleSheet(
                     f"color:{C_DIM};font-size:12px;"
-                    f"font-family:'Consolas','Courier New',"
-                    f"monospace;letter-spacing:1px;"
-                    f"background:transparent;"
+                    f"font-family:'Consolas','Courier New',monospace;"
+                    f"letter-spacing:1px;background:transparent;"
                 )
                 h.addWidget(nl)
                 h.addStretch()
@@ -766,22 +841,19 @@ class VaultDashboard(QMainWindow):
                 self_.text_lbl.setStyleSheet(
                     f"color:{C_CYAN};font-size:12px;"
                     f"font-weight:bold;"
-                    f"font-family:'Consolas','Courier New',"
-                    f"monospace;letter-spacing:1px;"
-                    f"background:transparent;"
+                    f"font-family:'Consolas','Courier New',monospace;"
+                    f"letter-spacing:1px;background:transparent;"
                 )
 
             def set_inactive(self_):
                 self_.setStyleSheet(
-                    "QPushButton{background:transparent;"
-                    "border:none;}"
+                    "QPushButton{background:transparent;border:none;}"
                     f"QPushButton:hover{{background:{C_GHOST};}}"
                 )
                 self_.text_lbl.setStyleSheet(
                     f"color:{C_DIM};font-size:12px;"
-                    f"font-family:'Consolas','Courier New',"
-                    f"monospace;letter-spacing:1px;"
-                    f"background:transparent;"
+                    f"font-family:'Consolas','Courier New',monospace;"
+                    f"letter-spacing:1px;background:transparent;"
                 )
 
         btn = NavBtn(icon, label, key)
@@ -800,7 +872,6 @@ class VaultDashboard(QMainWindow):
                 btn.set_inactive()
 
         self.section_stack.setCurrentIndex(sections[key])
-        self.active_section = key
         self._reset_idle()
 
         if key == 'files':   self._reload_files()
@@ -829,8 +900,7 @@ class VaultDashboard(QMainWindow):
         th.setSpacing(12)
 
         th.addWidget(mk(
-            "//  ENCRYPTED FILES",
-            C_CYAN, 11, bold=True, mono=True
+            "//  ENCRYPTED FILES", C_CYAN, 11, bold=True, mono=True
         ))
         th.addWidget(mk(
             "All files encrypted with AES-256-GCM.", C_DIM, 12
@@ -838,7 +908,7 @@ class VaultDashboard(QMainWindow):
         th.addStretch()
 
         self.files_count_lbl = mk(
-            "0 files", C_DIM, 12, mono=True
+            f"{len(self.fake_files)} files", C_DIM, 12, mono=True
         )
         th.addWidget(self.files_count_lbl)
 
@@ -871,18 +941,18 @@ class VaultDashboard(QMainWindow):
         return widget
 
     def _reload_files(self):
+        """Reload the fake file list."""
         while self.files_layout.count() > 1:
             item = self.files_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        files = self.vault.load_meta()
         self.files_count_lbl.setText(
-            f"{len(files)} file"
-            f"{'s' if len(files) != 1 else ''}"
+            f"{len(self.fake_files)} file"
+            f"{'s' if len(self.fake_files) != 1 else ''}"
         )
 
-        if not files:
+        if not self.fake_files:
             empty = mk(
                 "// No files in vault.\n"
                 "// Click  + ADD FILE  to encrypt and store a file.",
@@ -892,15 +962,27 @@ class VaultDashboard(QMainWindow):
             self.files_layout.insertWidget(0, empty)
             return
 
-        for meta in files:
-            row = FileRow(meta)
-            row.export_requested.connect(self._export_file)
+        for i, entry in enumerate(self.fake_files):
+            if isinstance(entry, tuple):
+                icon, name, size, date = entry
+            else:
+                icon = get_icon(entry.get('name', ''))
+                name = entry.get('name', '')
+                size = entry.get('size', '')
+                date = entry.get('date', '')
+
+            row = FakeFileRow(i, icon, name, size, date)
             row.delete_requested.connect(self._delete_file)
             self.files_layout.insertWidget(
                 self.files_layout.count() - 1, row
             )
 
     def _add_file(self):
+        """
+        Open a file picker.
+        Generate a convincing fake name for the file.
+        Add it to the in-memory fake list.
+        """
         self._reset_idle()
         path, _ = QFileDialog.getOpenFileName(
             self, "Select File to Add to Vault",
@@ -908,52 +990,63 @@ class VaultDashboard(QMainWindow):
         )
         if not path:
             return
-        try:
-            meta = self.vault.add_file(Path(path))
-            self._reload_files()
-            self._toast(f"// FILE ADDED:  {meta['name']}")
-        except Exception as e:
-            self._err(f"Failed to add file:\n{e}")
 
-    def _export_file(self, vault_id: str):
-        self._reset_idle()
-        dest = QFileDialog.getExistingDirectory(
-            self, "Choose Export Location", str(Path.home())
-        )
-        if not dest:
-            return
-        try:
-            out = self.vault.export_file(vault_id, Path(dest))
-            self._toast(f"// EXPORTED:  {out.name}")
-        except Exception as e:
-            self._err(f"Export failed:\n{e}")
+        real_path  = Path(path)
+        fake_name  = generate_fake_filename(real_path.name)
+        fake_size  = random.choice(FAKE_SIZES)
+        fake_date  = _fake_date()
+        fake_icon  = get_icon(fake_name)
 
-    def _delete_file(self, vault_id: str):
+        # Add to in-memory list as a tuple
+        self.fake_files.append(
+            (fake_icon, fake_name, fake_size, fake_date)
+        )
+
+        # Add to fake log
+        self.fake_log.append(
+            f"[{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}]"
+            f"  FILE_ADDED  {fake_name}"
+        )
+
+        self._reload_files()
+        self._toast(f"// FILE ENCRYPTED AND STORED:  {fake_name}")
+
+    def _delete_file(self, index: int):
+        """Delete a fake file from the in-memory list."""
         self._reset_idle()
-        box = QMessageBox(self)
-        box.setWindowTitle("// CONFIRM DELETE")
-        box.setText(
-            "Permanently delete this file from the vault?\n\n"
-            "The file will be overwritten and cannot be recovered."
-        )
-        box.setStandardButtons(
-            QMessageBox.StandardButton.Yes |
-            QMessageBox.StandardButton.No
-        )
-        box.setStyleSheet(
-            f"QMessageBox{{background:{C_BG};color:{C_WHITE};"
-            f"font-family:'Consolas','Courier New',monospace;}}"
-            f"QPushButton{{background:{C_CYAN};color:#000;"
-            f"border:none;padding:6px 16px;font-weight:bold;"
-            f"font-family:'Consolas','Courier New',monospace;}}"
-        )
-        if box.exec() == QMessageBox.StandardButton.Yes:
-            try:
-                self.vault.delete_file(vault_id)
+        if 0 <= index < len(self.fake_files):
+            entry = self.fake_files[index]
+            name  = (
+                entry[1] if isinstance(entry, tuple)
+                else entry.get('name', '')
+            )
+
+            box = QMessageBox(self)
+            box.setWindowTitle("// CONFIRM DELETE")
+            box.setText(
+                "Permanently delete this file from the vault?\n\n"
+                "The file will be overwritten and cannot be recovered."
+            )
+            box.setStandardButtons(
+                QMessageBox.StandardButton.Yes |
+                QMessageBox.StandardButton.No
+            )
+            box.setStyleSheet(
+                f"QMessageBox{{background:{C_BG};color:{C_WHITE};"
+                f"font-family:'Consolas','Courier New',monospace;}}"
+                f"QPushButton{{background:{C_CYAN};color:#000;"
+                f"border:none;padding:6px 16px;font-weight:bold;"
+                f"font-family:'Consolas','Courier New',monospace;}}"
+            )
+
+            if box.exec() == QMessageBox.StandardButton.Yes:
+                del self.fake_files[index]
+                self.fake_log.append(
+                    f"[{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}]"
+                    f"  FILE_DELETED  {name}"
+                )
                 self._reload_files()
                 self._toast("// FILE SECURELY DELETED")
-            except Exception as e:
-                self._err(f"Delete failed:\n{e}")
 
     # -----------------------------------------------
     # CREDENTIALS SECTION
@@ -976,16 +1069,9 @@ class VaultDashboard(QMainWindow):
         th.setSpacing(12)
 
         th.addWidget(mk(
-            "//  CREDENTIALS",
-            C_CYAN, 11, bold=True, mono=True
+            "//  CREDENTIALS", C_CYAN, 11, bold=True, mono=True
         ))
         th.addStretch()
-
-        import_btn = QPushButton("IMPORT FROM BROWSER")
-        import_btn.setFixedSize(200, 36)
-        import_btn.setStyleSheet(BTN_GHOST)
-        import_btn.clicked.connect(self._import_from_browser)
-        th.addWidget(import_btn)
 
         add_cred_btn = QPushButton("+ ADD CREDENTIAL")
         add_cred_btn.setFixedSize(160, 36)
@@ -1034,17 +1120,17 @@ class VaultDashboard(QMainWindow):
         self.creds_scroll.setWidget(self.creds_container)
         v.addWidget(self.creds_scroll, stretch=1)
 
+        QTimer.singleShot(100, self._reload_creds)
         return widget
 
     def _reload_creds(self):
+        """Reload the fake credentials list."""
         while self.creds_layout.count() > 1:
             item = self.creds_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
-        creds = self.vault.load_creds()
-
-        if not creds:
+        if not self.fake_creds:
             empty = mk(
                 "// No credentials saved.\n"
                 "// Click  + ADD CREDENTIAL  to store a password.",
@@ -1054,14 +1140,15 @@ class VaultDashboard(QMainWindow):
             self.creds_layout.insertWidget(0, empty)
             return
 
-        for i, cred in enumerate(creds):
-            row = CredRow(cred, i)
+        for i, cred in enumerate(self.fake_creds):
+            row = FakeCredRow(cred, i)
             row.delete_requested.connect(self._delete_cred)
             self.creds_layout.insertWidget(
                 self.creds_layout.count() - 1, row
             )
 
     def _add_credential(self):
+        """Add a new fake credential to the in-memory list."""
         self._reset_idle()
 
         site, ok = QInputDialog.getText(
@@ -1083,183 +1170,32 @@ class VaultDashboard(QMainWindow):
         if not ok:
             return
 
-        creds = self.vault.load_creds()
-        creds.append({
+        self.fake_creds.append({
             'site'    : site.strip(),
             'username': username.strip(),
             'password': password,
-            'added'   : datetime.now().strftime("%d %b %Y"),
+            'added'   : _fake_short_date(),
         })
-        self.vault.save_creds(creds)
-        write_log(f"CREDENTIAL_ADDED  {site.strip()}")
+
+        self.fake_log.append(
+            f"[{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}]"
+            f"  CREDENTIAL_ADDED  {site.strip()}"
+        )
+
         self._reload_creds()
         self._toast(f"// CREDENTIAL SAVED:  {site.strip()}")
 
     def _delete_cred(self, index: int):
+        """Delete a fake credential from the in-memory list."""
         self._reset_idle()
-        creds = self.vault.load_creds()
-        if 0 <= index < len(creds):
-            name = creds[index].get('site', '')
-            del creds[index]
-            self.vault.save_creds(creds)
-            write_log(f"CREDENTIAL_DELETED  {name}")
+        if 0 <= index < len(self.fake_creds):
+            name = self.fake_creds[index].get('site', '')
+            del self.fake_creds[index]
+            self.fake_log.append(
+                f"[{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}]"
+                f"  CREDENTIAL_DELETED  {name}"
+            )
             self._reload_creds()
-
-    def _import_from_browser(self):
-        """
-        Extract saved passwords from all installed browsers
-        including all profiles, then import into the vault.
-        """
-        self._reset_idle()
-
-        try:
-            from src.browser.extractor import BrowserExtractor
-
-            extractor = BrowserExtractor()
-
-            # Show summary first so user knows what
-            # will be scanned before starting
-            summary = extractor.get_extraction_summary()
-
-            if not summary:
-                self._toast(
-                    "// No supported browsers found."
-                )
-                return
-
-            # Build readable summary message
-            lines = ["Browsers and profiles found:\n"]
-            for browser, info in summary.items():
-                count = info['profiles']
-                lines.append(
-                    f"  {browser}:  "
-                    f"{count} profile"
-                    f"{'s' if count != 1 else ''}"
-                )
-            lines.append(
-                "\n\nExtract all saved passwords?\n\n"
-                "Close all browsers before continuing\n"
-                "for best results."
-            )
-
-            box = QMessageBox(self)
-            box.setWindowTitle("// BROWSER IMPORT")
-            box.setText("\n".join(lines))
-            box.setStandardButtons(
-                QMessageBox.StandardButton.Yes |
-                QMessageBox.StandardButton.No
-            )
-            box.setStyleSheet(
-                f"QMessageBox{{background:{C_BG};"
-                f"color:{C_WHITE};"
-                f"font-family:'Consolas','Courier New',"
-                f"monospace;font-size:13px;}}"
-                f"QPushButton{{background:{C_CYAN};"
-                f"color:#000;border:none;"
-                f"padding:8px 20px;font-weight:bold;"
-                f"font-family:'Consolas','Courier New',"
-                f"monospace;}}"
-            )
-
-            if box.exec() != QMessageBox.StandardButton.Yes:
-                return
-
-            self._toast(
-                "// Scanning all browser profiles..."
-            )
-
-            # Extract all credentials from all profiles
-            extracted = extractor.extract_all()
-
-            if not extracted:
-                self._toast(
-                    "// No saved credentials found "
-                    "in any browser."
-                )
-                if extractor.errors:
-                    self._err(
-                        "Some browsers could not be scanned.\n\n"
-                        "Close all browsers and try again.\n\n"
-                        + "\n".join(extractor.errors[:5])
-                    )
-                return
-
-            # Deduplicate against existing vault credentials
-            existing      = self.vault.load_creds()
-            existing_keys = {
-                (c.get('site', ''), c.get('username', ''))
-                for c in existing
-            }
-
-            new_creds = []
-            for cred in extracted:
-                key = (
-                    cred.get('site', ''),
-                    cred.get('username', '')
-                )
-                if key not in existing_keys and key[0]:
-                    new_creds.append({
-                        'site'    : cred['site'],
-                        'username': cred['username'],
-                        'password': cred['password'],
-                        'added'   : datetime.now().strftime(
-                            "%d %b %Y"
-                        ),
-                    })
-                    existing_keys.add(key)
-
-            if not new_creds:
-                self._toast(
-                    "// All browser credentials already "
-                    "in vault. Nothing new."
-                )
-                return
-
-            # Final confirmation with total count
-            box2 = QMessageBox(self)
-            box2.setWindowTitle("// CONFIRM IMPORT")
-            box2.setText(
-                f"Found {len(new_creds)} new credential"
-                f"{'s' if len(new_creds) != 1 else ''} "
-                f"across all profiles.\n\n"
-                f"Import into vault?"
-            )
-            box2.setStandardButtons(
-                QMessageBox.StandardButton.Yes |
-                QMessageBox.StandardButton.No
-            )
-            box2.setStyleSheet(
-                f"QMessageBox{{background:{C_BG};"
-                f"color:{C_WHITE};"
-                f"font-family:'Consolas','Courier New',"
-                f"monospace;font-size:13px;}}"
-                f"QPushButton{{background:{C_CYAN};"
-                f"color:#000;border:none;"
-                f"padding:8px 20px;font-weight:bold;"
-                f"font-family:'Consolas','Courier New',"
-                f"monospace;}}"
-            )
-
-            if box2.exec() == QMessageBox.StandardButton.Yes:
-                existing.extend(new_creds)
-                self.vault.save_creds(existing)
-                write_log(
-                    f"BROWSER_IMPORT  "
-                    f"{len(new_creds)} credentials"
-                )
-                self._reload_creds()
-                self._toast(
-                    f"// IMPORTED:  {len(new_creds)} "
-                    f"credential"
-                    f"{'s' if len(new_creds) != 1 else ''}"
-                )
-
-        except Exception as e:
-            self._err(
-                f"Browser import failed:\n\n{str(e)}\n\n"
-                f"Make sure all browsers are fully closed "
-                f"before importing."
-            )
 
     # -----------------------------------------------
     # NOTES SECTION
@@ -1282,11 +1218,10 @@ class VaultDashboard(QMainWindow):
         th.setSpacing(12)
 
         th.addWidget(mk(
-            "//  SECURE NOTES",
-            C_CYAN, 11, bold=True, mono=True
+            "//  SECURE NOTES", C_CYAN, 11, bold=True, mono=True
         ))
         th.addWidget(mk(
-            "Encrypted with AES-256-GCM.", C_DIM, 12
+            "Encrypted with AES-256-GCM. Auto-saved.", C_DIM, 12
         ))
         th.addStretch()
 
@@ -1311,21 +1246,25 @@ class VaultDashboard(QMainWindow):
         )
         v.addWidget(self.notes_editor, stretch=1)
 
+        QTimer.singleShot(100, self._load_notes)
         return widget
 
     def _load_notes(self):
-        content = self.vault.load_notes()
-        self.notes_editor.setPlainText(content)
+        """Load the fake notes into the editor."""
+        self.notes_editor.setPlainText(self.fake_notes)
 
     def _save_notes(self):
+        """
+        Save notes to memory only.
+        Shows a convincing save success message.
+        """
         self._reset_idle()
-        content = self.notes_editor.toPlainText()
-        try:
-            self.vault.save_notes(content)
-            write_log("NOTES_SAVED")
-            self._toast("// NOTES SAVED AND ENCRYPTED")
-        except Exception as e:
-            self._err(f"Failed to save notes:\n{e}")
+        self.fake_notes = self.notes_editor.toPlainText()
+        self.fake_log.append(
+            f"[{datetime.now().strftime('%Y-%m-%d  %H:%M:%S')}]"
+            f"  NOTES_SAVED"
+        )
+        self._toast("// NOTES SAVED AND ENCRYPTED")
 
     # -----------------------------------------------
     # LOG SECTION
@@ -1347,12 +1286,10 @@ class VaultDashboard(QMainWindow):
         th.setContentsMargins(28, 0, 28, 0)
 
         th.addWidget(mk(
-            "//  ACCESS LOG",
-            C_CYAN, 11, bold=True, mono=True
+            "//  ACCESS LOG", C_CYAN, 11, bold=True, mono=True
         ))
         th.addWidget(mk(
-            "Every vault operation is recorded here.",
-            C_DIM, 12
+            "Every vault operation is recorded here.", C_DIM, 12
         ))
         th.addStretch()
 
@@ -1374,24 +1311,37 @@ class VaultDashboard(QMainWindow):
         )
         v.addWidget(self.log_viewer, stretch=1)
 
+        QTimer.singleShot(100, self._load_log)
         return widget
 
     def _load_log(self):
-        content = self.vault.load_log()
+        """Display the fake access log."""
+        content = "\n".join(reversed(self.fake_log))
         self.log_viewer.setPlainText(content)
         sb = self.log_viewer.verticalScrollBar()
         sb.setValue(sb.maximum())
 
     def _clear_log(self):
+        """Clear the fake log."""
         self._reset_idle()
-        try:
-            if LOG_FILE.exists():
-                LOG_FILE.unlink()
+        box = QMessageBox(self)
+        box.setWindowTitle("// CLEAR LOG")
+        box.setText("Clear all access log entries?")
+        box.setStandardButtons(
+            QMessageBox.StandardButton.Yes |
+            QMessageBox.StandardButton.No
+        )
+        box.setStyleSheet(
+            f"QMessageBox{{background:{C_BG};color:{C_WHITE};"
+            f"font-family:'Consolas','Courier New',monospace;}}"
+            f"QPushButton{{background:{C_CYAN};color:#000;"
+            f"border:none;padding:6px 16px;font-weight:bold;"
+            f"font-family:'Consolas','Courier New',monospace;}}"
+        )
+        if box.exec() == QMessageBox.StandardButton.Yes:
+            self.fake_log = []
             self.log_viewer.clear()
-            write_log("LOG_CLEARED")
             self._toast("// ACCESS LOG CLEARED")
-        except Exception as e:
-            self._err(f"Could not clear log:\n{e}")
 
     # -----------------------------------------------
     # STATUS BAR
@@ -1412,8 +1362,7 @@ class VaultDashboard(QMainWindow):
         h.addWidget(self.toast_lbl)
         h.addStretch()
         h.addWidget(mk(
-            "PANIC LOCK:  Ctrl+Shift+X",
-            C_GHOST, 10, mono=True
+            "PANIC LOCK:  Ctrl+Shift+X", C_GHOST, 10, mono=True
         ))
 
         return status
@@ -1423,42 +1372,29 @@ class VaultDashboard(QMainWindow):
     # -----------------------------------------------
 
     def _toast(self, message: str):
+        """Show a brief status message at the bottom."""
         self.toast_lbl.setText(message)
         self.toast_lbl.setStyleSheet(
             f"color:{C_GREEN};font-size:11px;"
             f"font-family:'Consolas','Courier New',monospace;"
             f"background:transparent;"
         )
-        QTimer.singleShot(
-            4000, lambda: self.toast_lbl.setText("")
-        )
-
-    def _err(self, message: str):
-        box = QMessageBox(self)
-        box.setWindowTitle("// ERROR")
-        box.setText(message)
-        box.setIcon(QMessageBox.Icon.Critical)
-        box.setStyleSheet(
-            f"QMessageBox{{background:{C_BG};color:{C_WHITE};"
-            f"font-family:'Consolas','Courier New',monospace;}}"
-            f"QPushButton{{background:{C_CYAN};color:#000;"
-            f"border:none;padding:6px 16px;font-weight:bold;"
-            f"font-family:'Consolas','Courier New',monospace;}}"
-        )
-        box.exec()
+        QTimer.singleShot(4000, lambda: self.toast_lbl.setText(""))
 
     def _reset_idle(self):
         self.idle_timer.start(AUTO_LOCK_SECONDS * 1000)
 
-    def _auto_lock(self):
-        write_log("VAULT_AUTO_LOCKED  reason:inactivity")
-        self._stop_security()
+    def _lock(self):
+        """Lock and return to login. Wipe all session data."""
+        self.fake_files = []
+        self.fake_creds = []
+        self.fake_notes = ""
+        self.fake_log   = []
         self.lock_requested.emit()
 
-    def _instant_lock(self):
-        write_log("VAULT_LOCKED  reason:panic_button")
-        self._stop_security()
-        self.lock_requested.emit()
+    # -----------------------------------------------
+    # WINDOW DRAG
+    # -----------------------------------------------
 
     def mousePressEvent(self, event):
         self._reset_idle()
@@ -1488,17 +1424,7 @@ class VaultDashboard(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
-
-    test_user = {
-        'username': 'TestUser',
-        'hints'   : ['hint1', 'hint2', 'hint3'],
-    }
-
-    window = VaultDashboard(
-        user_data=test_user,
-        master_password="testpassword123"
-    )
+    window = FakeVault2(username="TestUser")
     window.lock_requested.connect(app.quit)
     window.show()
-
     sys.exit(app.exec())

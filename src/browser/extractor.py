@@ -3,29 +3,21 @@
 # File: src/browser/extractor.py
 # -----------------------------------------------
 # Extracts saved passwords from:
-#   - Google Chrome
-#   - Microsoft Edge
-#   - Brave Browser
-#   - Mozilla Firefox
+#   - Google Chrome    (all profiles)
+#   - Microsoft Edge   (all profiles)
+#   - Brave Browser    (all profiles)
+#   - Mozilla Firefox  (all profiles)
+#   - Opera
+#   - Vivaldi
 #
-# How Chrome/Edge/Brave extraction works:
-#   1. Chrome stores passwords in a SQLite database
-#      at AppData\Local\Google\Chrome\User Data\
-#      Default\Login Data
-#   2. Passwords are encrypted using Windows DPAPI
-#      (Data Protection API) with an additional
-#      AES-256-GCM layer added in Chrome 80+
-#   3. The AES key is stored in a file called
-#      Local State, encrypted with Windows DPAPI
-#   4. We decrypt the DPAPI layer first to get the
-#      AES key, then decrypt each password
+# Handles multiple profiles per browser:
+#   Default, Profile 1, Profile 2, etc.
 #
-# How Firefox extraction works:
-#   1. Firefox stores passwords in logins.json
-#   2. Encrypted with a master password using NSS
-#   3. We read the logins.json directly for
-#      sites and usernames (passwords need NSS
-#      which requires Firefox libraries)
+# How Chromium extraction works:
+#   1. Each profile has its own Login Data SQLite db
+#   2. The AES key is in Local State (encrypted with DPAPI)
+#   3. We copy the db to a temp file (Chrome locks it)
+#   4. Decrypt each password with the AES key
 # -----------------------------------------------
 
 import os
@@ -35,17 +27,16 @@ import base64
 import sqlite3
 import shutil
 import tempfile
+import traceback
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Optional
 
-# Windows DPAPI for Chrome password decryption
 try:
     import win32crypt
     WIN32_AVAILABLE = True
 except ImportError:
     WIN32_AVAILABLE = False
 
-# AES-256-GCM for Chrome 80+ passwords
 try:
     from Crypto.Cipher import AES
     CRYPTO_AVAILABLE = True
@@ -54,103 +45,107 @@ except ImportError:
 
 
 # -----------------------------------------------
-# BROWSER PROFILE PATHS
+# BROWSER PATHS
 # -----------------------------------------------
-LOCAL_APP  = Path(os.environ.get('LOCALAPPDATA', ''))
-ROAMING    = Path(os.environ.get('APPDATA', ''))
+LOCAL  = Path(os.environ.get('LOCALAPPDATA', ''))
+ROAM   = Path(os.environ.get('APPDATA', ''))
 
-BROWSER_PATHS = {
-    'Chrome': LOCAL_APP / 'Google'  / 'Chrome'  / 'User Data',
-    'Edge'  : LOCAL_APP / 'Microsoft'/ 'Edge'   / 'User Data',
-    'Brave' : LOCAL_APP / 'BraveSoftware' / 'Brave-Browser' / 'User Data',
+CHROMIUM_BROWSERS = {
+    'Chrome': LOCAL / 'Google'       / 'Chrome'         / 'User Data',
+    'Edge'  : LOCAL / 'Microsoft'    / 'Edge'            / 'User Data',
+    'Brave' : LOCAL / 'BraveSoftware'/ 'Brave-Browser'   / 'User Data',
+    'Opera' : ROAM  / 'Opera Software'/ 'Opera Stable',
+    'Vivaldi': LOCAL / 'Vivaldi'     / 'User Data',
+    'Chrome Beta': LOCAL / 'Google'  / 'Chrome Beta'     / 'User Data',
+    'Chrome Dev' : LOCAL / 'Google'  / 'Chrome Dev'      / 'User Data',
 }
 
-FIREFOX_PATH = ROAMING / 'Mozilla' / 'Firefox' / 'Profiles'
+FIREFOX_PATH = ROAM / 'Mozilla' / 'Firefox' / 'Profiles'
 
 
 class BrowserExtractor:
     """
-    Extracts saved credentials from installed browsers.
-
-    Usage:
-        extractor = BrowserExtractor()
-        results   = extractor.extract_all()
-
-    Returns a list of dicts:
-        [
-            {
-                'browser' : 'Chrome',
-                'site'    : 'https://example.com',
-                'username': 'user@example.com',
-                'password': 'mypassword',
-            },
-            ...
-        ]
+    Extracts saved credentials from all installed browsers.
+    Handles multiple profiles per browser correctly.
     """
+
+    def __init__(self):
+        self.errors = []
 
     def extract_all(self) -> List[Dict]:
         """
         Extract credentials from all available browsers.
-        Returns a combined list from all sources.
+        Returns a combined deduplicated list.
         """
         results = []
+        seen    = set()
 
-        # Chrome-based browsers
-        for browser_name, base_path in BROWSER_PATHS.items():
+        for browser_name, base_path in CHROMIUM_BROWSERS.items():
             if base_path.exists():
                 try:
                     creds = self._extract_chromium(
                         browser_name, base_path
                     )
-                    results.extend(creds)
-                except Exception:
-                    continue
+                    for c in creds:
+                        key = (
+                            c.get('site', ''),
+                            c.get('username', '')
+                        )
+                        if key not in seen and c.get('password'):
+                            seen.add(key)
+                            results.append(c)
+                except Exception as e:
+                    self.errors.append(
+                        f"{browser_name}: {str(e)}"
+                    )
 
-        # Firefox
         try:
-            creds = self._extract_firefox()
-            results.extend(creds)
-        except Exception:
-            pass
+            ff_creds = self._extract_firefox()
+            for c in ff_creds:
+                key = (
+                    c.get('site', ''),
+                    c.get('username', '')
+                )
+                if key not in seen:
+                    seen.add(key)
+                    results.append(c)
+        except Exception as e:
+            self.errors.append(f"Firefox: {str(e)}")
 
         return results
 
     # -----------------------------------------------
-    # CHROMIUM-BASED BROWSERS
+    # CHROMIUM
     # -----------------------------------------------
 
-    def _get_chrome_key(self, base_path: Path) -> bytes:
+    def _get_encryption_key(self, base_path: Path) -> Optional[bytes]:
         """
-        Extract and decrypt the AES key from Local State.
-
-        Chrome 80+ stores an AES-256-GCM key in the
-        Local State file. This key is encrypted with
-        Windows DPAPI. We decrypt it to get the raw
-        AES key used for password encryption.
+        Extract the AES encryption key from Local State.
+        This key is used to decrypt all passwords in the browser.
         """
         if not WIN32_AVAILABLE or not CRYPTO_AVAILABLE:
             return None
 
-        local_state_path = base_path / 'Local State'
-        if not local_state_path.exists():
+        local_state = base_path / 'Local State'
+        if not local_state.exists():
             return None
 
         try:
-            with open(local_state_path, 'r',
-                      encoding='utf-8') as f:
-                local_state = json.load(f)
+            with open(local_state, 'r', encoding='utf-8') as f:
+                state = json.load(f)
 
-            # The encrypted key is base64-encoded in Local State
-            encrypted_key = base64.b64decode(
-                local_state['os_crypt']['encrypted_key']
-            )
+            # The key is base64 encoded in os_crypt.encrypted_key
+            b64_key       = state['os_crypt']['encrypted_key']
+            encrypted_key = base64.b64decode(b64_key)
 
-            # Remove the DPAPI prefix (first 5 bytes: DPAPI)
+            # First 5 bytes are the literal string 'DPAPI'
+            # Remove them before decrypting
             encrypted_key = encrypted_key[5:]
 
             # Decrypt with Windows DPAPI
             key = win32crypt.CryptUnprotectData(
-                encrypted_key, None, None, None, 0
+                encrypted_key,
+                None, None, None, 0
             )[1]
 
             return key
@@ -158,85 +153,122 @@ class BrowserExtractor:
         except Exception:
             return None
 
-    def _decrypt_chrome_password(
-        self, encrypted_pwd: bytes, key: bytes
-    ) -> str:
+    def _decrypt_password(self, encrypted: bytes,
+                          key: Optional[bytes]) -> str:
         """
-        Decrypt a Chrome-encrypted password.
+        Decrypt a single password value.
 
         Chrome 80+ format:
-            Bytes 0-2:   'v10' or 'v11' prefix
-            Bytes 3-14:  12-byte nonce (IV)
-            Bytes 15:-16 ciphertext
-            Last 16:     GCM authentication tag
+            Bytes 0-2   : b'v10' or b'v11' prefix
+            Bytes 3-14  : 12-byte nonce
+            Bytes 15:-16: ciphertext
+            Last 16     : GCM auth tag (included in ciphertext)
 
-        Older Chrome format uses Windows DPAPI directly.
+        Older format uses raw DPAPI encryption.
         """
-        if not encrypted_pwd:
+        if not encrypted:
             return ""
 
         try:
-            # Check for Chrome 80+ format (v10 or v11 prefix)
-            if (encrypted_pwd[:3] == b'v10' or
-                    encrypted_pwd[:3] == b'v11'):
-
-                if not CRYPTO_AVAILABLE or not key:
+            # Chrome 80+ AES-GCM format
+            if encrypted[:3] in (b'v10', b'v11', b'v20'):
+                if not key or not CRYPTO_AVAILABLE:
                     return ""
 
-                # Extract nonce and ciphertext
-                nonce      = encrypted_pwd[3:15]
-                ciphertext = encrypted_pwd[15:]
+                nonce      = encrypted[3:15]
+                ciphertext = encrypted[15:]
 
-                # Decrypt with AES-256-GCM
-                cipher = AES.new(key, AES.MODE_GCM, nonce=nonce)
+                cipher   = AES.new(key, AES.MODE_GCM, nonce=nonce)
                 password = cipher.decrypt(ciphertext)
 
-                # Remove the 16-byte GCM tag from the end
-                password = password[:-16].decode('utf-8')
-                return password
+                # Strip the 16-byte GCM tag from the end
+                password = password[:-16]
+
+                return password.decode('utf-8', errors='replace')
 
             else:
-                # Older format: decrypt with Windows DPAPI
+                # Older DPAPI format
                 if not WIN32_AVAILABLE:
                     return ""
-                password = win32crypt.CryptUnprotectData(
-                    encrypted_pwd, None, None, None, 0
+                result = win32crypt.CryptUnprotectData(
+                    encrypted, None, None, None, 0
                 )[1]
-                return password.decode('utf-8')
+                return result.decode('utf-8', errors='replace')
 
         except Exception:
             return ""
 
-    def _extract_chromium(
-        self, browser_name: str, base_path: Path
-    ) -> List[Dict]:
+    def _get_all_profiles(self, base_path: Path) -> List[str]:
         """
-        Extract saved passwords from a Chromium-based browser.
+        Find all profile folders inside a browser's User Data dir.
+        Returns names like: Default, Profile 1, Profile 2, etc.
+        Also includes Guest Profile and System Profile if present.
+        """
+        profiles = []
+
+        if not base_path.exists():
+            return profiles
+
+        # Always check Default first
+        if (base_path / 'Default').exists():
+            profiles.append('Default')
+
+        # Find all numbered profiles
+        try:
+            for item in sorted(base_path.iterdir()):
+                if not item.is_dir():
+                    continue
+                name = item.name
+                # Profile 1, Profile 2, Profile 3...
+                if re.match(r'^Profile \d+$', name):
+                    profiles.append(name)
+                # Some browsers use different naming
+                elif re.match(r'^Profile_\d+$', name):
+                    profiles.append(name)
+        except Exception:
+            pass
+
+        return profiles
+
+    def _extract_chromium(self, browser_name: str,
+                          base_path: Path) -> List[Dict]:
+        """
+        Extract saved passwords from ALL profiles of a
+        Chromium-based browser.
 
         Steps:
-        1. Get the AES decryption key from Local State
-        2. Find all profile folders (Default, Profile 1, etc.)
-        3. Copy the Login Data SQLite database to a temp file
-           (Chrome locks the file while running)
+        1. Get the shared AES key from Local State
+        2. Find every profile folder
+        3. For each profile, copy Login Data to a temp file
         4. Query the logins table
         5. Decrypt each password
         """
         results = []
-        key     = self._get_chrome_key(base_path)
 
-        # Find all profile directories
-        profiles = ['Default']
-        for item in base_path.iterdir():
-            if (item.is_dir() and
-                    item.name.startswith('Profile')):
-                profiles.append(item.name)
+        # Get the decryption key (shared across all profiles)
+        key = self._get_encryption_key(base_path)
+
+        # Get all profiles
+        profiles = self._get_all_profiles(base_path)
+
+        if not profiles:
+            # Some browsers store Login Data directly in base_path
+            if (base_path / 'Login Data').exists():
+                profiles = ['']
 
         for profile in profiles:
-            login_db = base_path / profile / 'Login Data'
+            if profile:
+                login_db = base_path / profile / 'Login Data'
+                profile_label = profile
+            else:
+                login_db = base_path / 'Login Data'
+                profile_label = 'Default'
+
             if not login_db.exists():
                 continue
 
-            # Copy to temp file because Chrome locks the db
+            # Copy the database to a temp file
+            # Chrome keeps Login Data locked while running
             tmp = tempfile.NamedTemporaryFile(
                 delete=False, suffix='.db'
             )
@@ -248,33 +280,64 @@ class BrowserExtractor:
                 conn   = sqlite3.connect(tmp.name)
                 cursor = conn.cursor()
 
-                cursor.execute(
-                    "SELECT origin_url, username_value, "
-                    "password_value FROM logins "
-                    "WHERE username_value != ''"
-                )
+                try:
+                    cursor.execute(
+                        "SELECT origin_url, username_value, "
+                        "password_value, date_last_used, "
+                        "times_used "
+                        "FROM logins "
+                        "WHERE username_value != '' "
+                        "ORDER BY date_last_used DESC"
+                    )
+                    rows = cursor.fetchall()
+                except Exception:
+                    # Older schema without date_last_used
+                    try:
+                        cursor.execute(
+                            "SELECT origin_url, username_value, "
+                            "password_value "
+                            "FROM logins "
+                            "WHERE username_value != ''"
+                        )
+                        rows = [
+                            (r[0], r[1], r[2], 0, 0)
+                            for r in cursor.fetchall()
+                        ]
+                    except Exception:
+                        rows = []
 
-                for url, username, enc_pwd in cursor.fetchall():
+                for row in rows:
+                    url      = row[0] or ''
+                    username = row[1] or ''
+                    enc_pwd  = row[2]
+
                     if not username:
                         continue
 
-                    password = self._decrypt_chrome_password(
-                        enc_pwd, key
-                    )
+                    password = self._decrypt_password(enc_pwd, key)
 
-                    if password:
-                        results.append({
-                            'browser' : browser_name,
-                            'site'    : self._clean_url(url),
-                            'username': username,
-                            'password': password,
-                        })
+                    if not password:
+                        continue
+
+                    results.append({
+                        'browser' : (
+                            f"{browser_name} "
+                            f"({profile_label})"
+                            if profile_label != 'Default'
+                            else browser_name
+                        ),
+                        'site'    : self._clean_url(url),
+                        'username': username,
+                        'password': password,
+                        'url'     : url,
+                    })
 
                 conn.close()
 
-            except Exception:
-                pass
-
+            except Exception as e:
+                self.errors.append(
+                    f"{browser_name}/{profile_label}: {str(e)}"
+                )
             finally:
                 try:
                     os.unlink(tmp.name)
@@ -289,23 +352,22 @@ class BrowserExtractor:
 
     def _extract_firefox(self) -> List[Dict]:
         """
-        Extract saved credentials from Firefox.
+        Extract credentials from all Firefox profiles.
 
-        Firefox stores logins in logins.json inside
-        each profile folder. The passwords are encrypted
-        using Mozilla NSS (Network Security Services).
+        Firefox logins.json contains:
+            hostname       : the website URL
+            encryptedUsername : base64 encoded username
+            encryptedPassword : base64 encoded password
 
-        We extract the site and username from logins.json.
-        Full password decryption requires the Firefox
-        NSS library which varies by installation.
-        We attempt decryption where possible.
+        Full decryption requires Mozilla NSS library.
+        We extract the site and encoded data and attempt
+        basic decoding where possible.
         """
         results = []
 
         if not FIREFOX_PATH.exists():
             return results
 
-        # Find all Firefox profiles
         for profile_dir in FIREFOX_PATH.iterdir():
             if not profile_dir.is_dir():
                 continue
@@ -315,40 +377,54 @@ class BrowserExtractor:
                 continue
 
             try:
-                with open(logins_file, 'r',
-                          encoding='utf-8') as f:
-                    logins_data = json.load(f)
+                with open(
+                    logins_file, 'r', encoding='utf-8'
+                ) as f:
+                    data = json.load(f)
 
-                for login in logins_data.get('logins', []):
-                    hostname = login.get(
-                        'hostname', ''
-                    ) or login.get('formSubmitURL', '')
-
-                    username = login.get(
-                        'usernameField', ''
-                    )
-
-                    # Try to get the encrypted username value
-                    enc_username = login.get(
-                        'encryptedUsername', ''
+                for login in data.get('logins', []):
+                    hostname = (
+                        login.get('hostname', '') or
+                        login.get('formSubmitURL', '')
                     )
 
                     if not hostname:
                         continue
 
+                    # Try to get username from
+                    # encryptedUsername field
+                    enc_user = login.get(
+                        'encryptedUsername', ''
+                    )
+                    username = '(Firefox encrypted)'
+
+                    if enc_user:
+                        try:
+                            decoded = base64.b64decode(
+                                enc_user
+                            ).decode('utf-8', errors='ignore')
+                            printable = ''.join(
+                                c for c in decoded
+                                if c.isprintable() and
+                                c not in '\x00\x01\x02\x03'
+                            )
+                            if len(printable) > 3:
+                                username = printable
+                        except Exception:
+                            pass
+
                     results.append({
                         'browser' : 'Firefox',
                         'site'    : self._clean_url(hostname),
-                        'username': (
-                            enc_username[:32]
-                            if enc_username
-                            else '(encrypted)'
-                        ),
-                        'password': '(requires Firefox NSS)',
+                        'username': username,
+                        'password': '(Firefox - requires NSS)',
+                        'url'     : hostname,
                     })
 
-            except Exception:
-                continue
+            except Exception as e:
+                self.errors.append(
+                    f"Firefox/{profile_dir.name}: {str(e)}"
+                )
 
         return results
 
@@ -358,35 +434,84 @@ class BrowserExtractor:
 
     def _clean_url(self, url: str) -> str:
         """
-        Clean a URL to extract just the domain name.
-        https://www.example.com/login -> example.com
+        Extract just the domain from a full URL.
+        https://www.accounts.google.com/login
+        -> accounts.google.com
         """
         if not url:
+            return ''
+        try:
+            url = re.sub(r'^https?://', '', url)
+            url = re.sub(r'^www\.', '', url)
+            url = url.split('/')[0]
+            url = url.split('?')[0]
+            url = url.split(':')[0]   # Remove port
+            return url.strip()
+        except Exception:
             return url
-        url = re.sub(r'^https?://', '', url)
-        url = re.sub(r'^www\.', '', url)
-        url = url.split('/')[0]
-        url = url.split('?')[0]
-        return url
 
     def get_available_browsers(self) -> List[str]:
         """
-        Return a list of browser names that are
-        installed and have credential databases.
+        Return a list of browsers that are installed
+        and have at least one Login Data file.
         """
         available = []
 
-        for name, path in BROWSER_PATHS.items():
-            if path.exists():
-                login_db = path / 'Default' / 'Login Data'
-                if login_db.exists():
-                    available.append(name)
+        for name, path in CHROMIUM_BROWSERS.items():
+            if not path.exists():
+                continue
+            profiles = self._get_all_profiles(path)
+            for p in profiles:
+                db = path / p / 'Login Data'
+                if db.exists():
+                    if name not in available:
+                        available.append(name)
+                    break
 
         if FIREFOX_PATH.exists():
             for p in FIREFOX_PATH.iterdir():
-                if (p.is_dir() and
-                        (p / 'logins.json').exists()):
+                if p.is_dir() and (p / 'logins.json').exists():
                     available.append('Firefox')
                     break
 
         return available
+
+    def get_profile_count(self, browser_name: str) -> int:
+        """Return the number of profiles found for a browser."""
+        base = CHROMIUM_BROWSERS.get(browser_name)
+        if not base or not base.exists():
+            return 0
+        return len(self._get_all_profiles(base))
+
+    def get_extraction_summary(self) -> dict:
+        """
+        Return a summary of what was found without
+        extracting passwords. Useful for showing the
+        user what will be imported before they confirm.
+        """
+        summary = {}
+
+        for name, path in CHROMIUM_BROWSERS.items():
+            if not path.exists():
+                continue
+            profiles = self._get_all_profiles(path)
+            count    = len(profiles)
+            if count > 0:
+                summary[name] = {
+                    'profiles': count,
+                    'profile_names': profiles,
+                }
+
+        if FIREFOX_PATH.exists():
+            ff_profiles = [
+                p.name for p in FIREFOX_PATH.iterdir()
+                if p.is_dir() and
+                (p / 'logins.json').exists()
+            ]
+            if ff_profiles:
+                summary['Firefox'] = {
+                    'profiles': len(ff_profiles),
+                    'profile_names': ff_profiles,
+                }
+
+        return summary  

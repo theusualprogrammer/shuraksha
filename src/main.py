@@ -2,19 +2,6 @@
 # Shuraksha - Main Application Entry Point
 # File: src/main.py
 # -----------------------------------------------
-# Controls the entire application screen flow.
-#
-# Flow:
-#   1. App launches
-#   2. Check if registration is complete
-#      - Not complete: show registration wizard
-#      - Complete: show login screen
-#   3. Login verifies master password
-#   4. Correct password: show fake dashboard
-#   5. Theme toggle switched to dark: show BODMAS
-#   6. Correct DOB entered: show real vault
-#   7. Lock / panic / auto-lock: back to login
-# -----------------------------------------------
 
 import sys
 import os
@@ -26,10 +13,11 @@ from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QIcon
 
-from src.ui.login           import LoginWindow
-from src.ui.fake_dashboard  import FakeDashboard
-from src.ui.bodmas          import BodmasScreen
-from src.ui.vault_dashboard import VaultDashboard
+from src.ui.login            import LoginWindow
+from src.ui.fake_dashboard   import FakeDashboard
+from src.ui.bodmas           import BodmasScreen
+from src.ui.vault_dashboard  import VaultDashboard
+from src.ui.fake_vault2      import FakeVault2
 from src.installer.registration import RegistrationWizard
 
 # -----------------------------------------------
@@ -57,15 +45,41 @@ class ShurakshaApp:
     """
     Central controller managing every screen transition.
     Only one window is visible at any time.
+
+    Screen flow:
+        Registration (first time only)
+            |
+            v
+        Login screen
+            |
+        Correct master password
+            |
+            v
+        Fake Dashboard (light mode decoy file manager)
+            |
+        Theme toggle -> dark mode
+            |
+            v
+        BODMAS screen
+            |
+            +-- Correct DOB      -> Real Vault
+            +-- Correct math     -> Second Fake Vault
+            +-- Wrong answer     -> Error / Lockout
+            +-- Back to light    -> Fake Dashboard
     """
 
     def __init__(self, app: QApplication):
         self.app              = app
+
+        # All window references
+        # Keeping them all here ensures _hide_all
+        # can clean up every single one
+        self.reg_window       = None
         self.login_window     = None
         self.fake_dashboard   = None
         self.bodmas_screen    = None
         self.vault_dashboard  = None
-        self.reg_window       = None
+        self.fake_vault2      = None   # Second fake vault
 
         # Decrypted user data from the login step
         self.user_data        = {}
@@ -96,10 +110,9 @@ class ShurakshaApp:
         self.reg_window = RegistrationWizard()
         self.reg_window.show()
 
-        # When the registration wizard calls QApplication.quit()
-        # the app would normally exit. We override that by
-        # connecting a check that shows the login screen instead.
-        self.app.aboutToQuit.connect(self._check_after_registration)
+        self.app.aboutToQuit.connect(
+            self._check_after_registration
+        )
 
     def _check_after_registration(self):
         """
@@ -107,8 +120,6 @@ class ShurakshaApp:
         If registration succeeded show the login screen.
         """
         if is_registered():
-            # Disconnect this one-time slot so it does not
-            # fire again on the next quit event
             try:
                 self.app.aboutToQuit.disconnect(
                     self._check_after_registration
@@ -126,9 +137,6 @@ class ShurakshaApp:
         self._hide_all()
 
         self.login_window = LoginWindow()
-
-        # Signal carries (decrypted_user_data, master_password)
-        # Both values arrive here together so neither is lost
         self.login_window.login_success.connect(
             self._on_login_success
         )
@@ -138,29 +146,26 @@ class ShurakshaApp:
                           password: str):
         """
         Called when the correct master password is entered.
-
-        Receives:
-            decrypted_data : the full user data dictionary
-            password       : the master password in plain text
-                             needed to open the vault manager
+        Receives the decrypted user data and master password
+        directly through the signal so neither is ever lost.
         """
         self.user_data        = decrypted_data
         self._master_password = password
 
         if not self._master_password:
-            # Should never happen but guard against it
             self._show_login()
             return
 
         self._show_fake_dashboard()
 
     # -----------------------------------------------
-    # FAKE DASHBOARD
+    # FAKE DASHBOARD (decoy layer one)
     # -----------------------------------------------
 
     def _show_fake_dashboard(self):
         """
-        Show the fake light mode file manager (the decoy).
+        Show the fake light mode file manager.
+        This is the first decoy layer.
         The theme toggle on this screen is the hidden trigger.
         """
         self._hide_all()
@@ -183,7 +188,11 @@ class ShurakshaApp:
         """
         Show the fake BODMAS maths challenge.
         Triggered when the theme toggle is set to dark.
-        The DOB entered here opens the real vault.
+
+        Three outcomes:
+            Correct DOB    -> real vault
+            Correct math   -> second fake vault
+            Wrong answer   -> error and lockout
         """
         self._hide_all()
 
@@ -191,7 +200,6 @@ class ShurakshaApp:
         dob_salt = self.user_data.get('dob_salt', '')
 
         if not dob_hash or not dob_salt:
-            # DOB data missing - fall back to login
             self._show_login()
             return
 
@@ -199,12 +207,22 @@ class ShurakshaApp:
             dob_hash=dob_hash,
             dob_salt=dob_salt
         )
+
+        # Correct DOB typed -> open real vault
         self.bodmas_screen.vault_access_granted.connect(
             self._show_vault
         )
+
+        # Correct math answer typed -> open second fake vault
+        self.bodmas_screen.fake_vault_access.connect(
+            self._show_fake_vault2
+        )
+
+        # Back button -> return to fake dashboard
         self.bodmas_screen.back_to_light.connect(
             self._show_fake_dashboard
         )
+
         self.bodmas_screen.show()
 
     # -----------------------------------------------
@@ -214,7 +232,8 @@ class ShurakshaApp:
     def _show_vault(self):
         """
         Show the real encrypted vault dashboard.
-        Only reachable after the correct DOB is entered.
+        Only reachable after the correct DOB is entered
+        on the BODMAS screen.
         """
         self._hide_all()
 
@@ -229,15 +248,44 @@ class ShurakshaApp:
 
     def _on_vault_locked(self):
         """
-        Called when the vault is locked for any reason:
-            - Panic button (Ctrl+Shift+X)
-            - Auto-lock after inactivity
-            - Manual lock button
-        Clears sensitive data and returns to login.
+        Called when the real vault is locked.
+        Clears all sensitive data and returns to login.
         """
-        # Clear sensitive data from memory immediately
         self._master_password = ''
         self.user_data        = {}
+        self._show_login()
+
+    # -----------------------------------------------
+    # SECOND FAKE VAULT (decoy layer two)
+    # -----------------------------------------------
+
+    def _show_fake_vault2(self):
+        """
+        Show the second fake vault.
+        Triggered when someone correctly solves the
+        BODMAS math question instead of typing the DOB.
+
+        This vault looks completely real but contains
+        only fabricated file entries and no actual data.
+        Anyone who correctly solves the math ends up
+        here instead of the real vault.
+        """
+        self._hide_all()
+
+        username = self.user_data.get('username', 'User')
+        self.fake_vault2 = FakeVault2(username=username)
+        self.fake_vault2.lock_requested.connect(
+            self._on_fake_vault2_locked
+        )
+        self.fake_vault2.show()
+
+    def _on_fake_vault2_locked(self):
+        """
+        Called when the second fake vault is locked.
+        Returns to login screen.
+        Does NOT clear master password or user data
+        in case the real user locks and wants to re-enter.
+        """
         self._show_login()
 
     # -----------------------------------------------
@@ -246,8 +294,9 @@ class ShurakshaApp:
 
     def _hide_all(self):
         """
-        Hide and destroy all open windows.
+        Hide and destroy every open window.
         Ensures only one window is active at a time.
+        All six possible windows are handled here.
         """
         for window in [
             self.reg_window,
@@ -255,6 +304,7 @@ class ShurakshaApp:
             self.fake_dashboard,
             self.bodmas_screen,
             self.vault_dashboard,
+            self.fake_vault2,       # Second fake vault
         ]:
             if window is not None:
                 try:
@@ -268,6 +318,7 @@ class ShurakshaApp:
         self.fake_dashboard  = None
         self.bodmas_screen   = None
         self.vault_dashboard = None
+        self.fake_vault2     = None
 
 
 # -----------------------------------------------
@@ -283,7 +334,6 @@ def main():
     app.setApplicationName("Shuraksha")
     app.setApplicationVersion("1.0.0")
 
-    # Set app icon if available
     icon_path = (
         Path(__file__).parent.parent /
         'assets' / 'icons' / 'icon.ico'
@@ -291,6 +341,28 @@ def main():
     if icon_path.exists():
         app.setWindowIcon(QIcon(str(icon_path)))
 
+    # Handle command line flags from the installer
+    args = sys.argv[1:]
+
+    if '--wipe' in args:
+        # Called by the uninstaller to clean vault data
+        import shutil
+        vault_path = (
+            Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
+        )
+        if vault_path.exists():
+            shutil.rmtree(vault_path)
+        sys.exit(0)
+
+    if '--register' in args:
+        # Called by the installer after installation
+        # Force show the registration wizard
+        app2 = QApplication.instance() or QApplication(sys.argv)
+        wizard = RegistrationWizard()
+        wizard.show()
+        sys.exit(app.exec())
+
+    # Normal launch
     controller = ShurakshaApp(app)
     controller.start()
 
