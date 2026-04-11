@@ -32,13 +32,13 @@ LOCAL = Path(os.environ.get('LOCALAPPDATA', ''))
 ROAM  = Path(os.environ.get('APPDATA', ''))
 
 CHROMIUM_BROWSERS = {
-    'Chrome'     : LOCAL / 'Google'       / 'Chrome'       / 'User Data',
-    'Edge'       : LOCAL / 'Microsoft'    / 'Edge'          / 'User Data',
-    'Brave'      : LOCAL / 'BraveSoftware'/ 'Brave-Browser' / 'User Data',
-    'Opera'      : ROAM  / 'Opera Software'/ 'Opera Stable',
-    'Vivaldi'    : LOCAL / 'Vivaldi'      / 'User Data',
-    'Chrome Beta': LOCAL / 'Google'       / 'Chrome Beta'   / 'User Data',
-    'Chrome Dev' : LOCAL / 'Google'       / 'Chrome Dev'    / 'User Data',
+    'Chrome'     : LOCAL / 'Google'        / 'Chrome'       / 'User Data',
+    'Edge'       : LOCAL / 'Microsoft'     / 'Edge'          / 'User Data',
+    'Brave'      : LOCAL / 'BraveSoftware' / 'Brave-Browser' / 'User Data',
+    'Opera'      : ROAM  / 'Opera Software' / 'Opera Stable',
+    'Vivaldi'    : LOCAL / 'Vivaldi'       / 'User Data',
+    'Chrome Beta': LOCAL / 'Google'        / 'Chrome Beta'   / 'User Data',
+    'Chrome Dev' : LOCAL / 'Google'        / 'Chrome Dev'    / 'User Data',
 }
 
 FIREFOX_PATH = ROAM / 'Mozilla' / 'Firefox' / 'Profiles'
@@ -48,11 +48,15 @@ class BrowserExtractor:
     """
     Extracts saved credentials from all installed browsers.
     Handles multiple profiles per browser correctly.
-    Skips garbled or unreadable passwords automatically.
+    Garbled or unreadable passwords are silently skipped.
     """
 
     def __init__(self):
         self.errors = []
+
+    # -----------------------------------------------
+    # PUBLIC
+    # -----------------------------------------------
 
     def extract_all(self) -> List[Dict]:
         """
@@ -97,14 +101,131 @@ class BrowserExtractor:
 
         return results
 
+    def get_available_browsers(self) -> List[str]:
+        """
+        Return list of browsers that are installed
+        and have at least one Login Data file.
+        """
+        available = []
+
+        for name, path in CHROMIUM_BROWSERS.items():
+            if not path.exists():
+                continue
+            profiles = self._get_all_profiles(path)
+            for p in profiles:
+                db = path / p / 'Login Data'
+                if db.exists():
+                    if name not in available:
+                        available.append(name)
+                    break
+
+        if FIREFOX_PATH.exists():
+            for p in FIREFOX_PATH.iterdir():
+                if p.is_dir() and (p / 'logins.json').exists():
+                    available.append('Firefox')
+                    break
+
+        return available
+
+    def get_profile_count(self, browser_name: str) -> int:
+        """Return the number of profiles found for a browser."""
+        base = CHROMIUM_BROWSERS.get(browser_name)
+        if not base or not base.exists():
+            return 0
+        return len(self._get_all_profiles(base))
+
+    def get_extraction_summary(self) -> dict:
+        """
+        Return a summary of browsers and profile counts
+        without extracting any passwords.
+        Shown to the user before they confirm the import.
+        """
+        summary = {}
+
+        for name, path in CHROMIUM_BROWSERS.items():
+            if not path.exists():
+                continue
+            profiles = self._get_all_profiles(path)
+            count    = len(profiles)
+            if count > 0:
+                summary[name] = {
+                    'profiles'     : count,
+                    'profile_names': profiles,
+                }
+
+        if FIREFOX_PATH.exists():
+            ff_profiles = [
+                p.name for p in FIREFOX_PATH.iterdir()
+                if p.is_dir() and
+                (p / 'logins.json').exists()
+            ]
+            if ff_profiles:
+                summary['Firefox'] = {
+                    'profiles'     : len(ff_profiles),
+                    'profile_names': ff_profiles,
+                }
+
+        return summary
+
+    # -----------------------------------------------
+    # VALIDATION
+    # -----------------------------------------------
+
+    def _is_valid_password(self, text: str) -> bool:
+        """
+        Strictly validate that a decrypted string is a
+        real password and not garbled binary data.
+
+        Rules:
+          - Must not be empty
+          - Every character must be in the ASCII printable
+            range (32-126) or common accented Latin (160-382)
+          - Must contain at least one ASCII letter or digit
+          - Must not start with a null byte or control char
+
+        This rejects box-drawing characters, diamond symbols,
+        and other unicode blocks that appear when decryption
+        fails with the wrong key.
+        """
+        if not text or len(text) == 0:
+            return False
+
+        # Reject if starts with a null or control character
+        if ord(text[0]) < 32:
+            return False
+
+        for c in text:
+            code = ord(c)
+            # Standard ASCII printable (space through tilde)
+            if 32 <= code <= 126:
+                continue
+            # Common accented Latin characters
+            if 160 <= code <= 382:
+                continue
+            # Everything else means bad decryption
+            return False
+
+        # Must have at least one ASCII letter or digit
+        has_alnum = any(
+            c.isascii() and c.isalnum()
+            for c in text
+        )
+        if not has_alnum:
+            return False
+
+        return True
+
     # -----------------------------------------------
     # CHROMIUM
     # -----------------------------------------------
 
-    def _get_encryption_key(self, base_path: Path) -> Optional[bytes]:
+    def _get_encryption_key(
+        self, base_path: Path
+    ) -> Optional[bytes]:
         """
         Extract and decrypt the AES key from Local State.
         This key decrypts all passwords stored by the browser.
+        The key itself is encrypted with Windows DPAPI.
         """
         if not WIN32_AVAILABLE or not CRYPTO_AVAILABLE:
             return None
@@ -120,11 +241,10 @@ class BrowserExtractor:
             b64_key       = state['os_crypt']['encrypted_key']
             encrypted_key = base64.b64decode(b64_key)
 
-            # Remove the first 5 bytes which are the
-            # literal ASCII string 'DPAPI'
+            # First 5 bytes are the literal ASCII 'DPAPI'
+            # Remove them before passing to CryptUnprotectData
             encrypted_key = encrypted_key[5:]
 
-            # Decrypt with Windows DPAPI
             key = win32crypt.CryptUnprotectData(
                 encrypted_key, None, None, None, 0
             )[1]
@@ -134,37 +254,9 @@ class BrowserExtractor:
         except Exception:
             return None
 
-    def _is_readable(self, text: str) -> bool:
-        """
-        Check if a decrypted password string is
-        actually readable and not garbage bytes.
-
-        Returns True only if the string:
-          - Is not empty
-          - Has fewer than 20% unicode replacement chars
-          - Has at least 80% printable characters
-        """
-        if not text:
-            return False
-
-        # Too many replacement characters means bad decryption
-        replacement_ratio = text.count('\ufffd') / len(text)
-        if replacement_ratio > 0.2:
-            return False
-
-        # Too many non-printable characters means garbage
-        printable_count = sum(
-            1 for c in text
-            if c.isprintable() or c in (' ', '\t')
-        )
-        printable_ratio = printable_count / len(text)
-        if printable_ratio < 0.8:
-            return False
-
-        return True
-
-    def _decrypt_password(self, encrypted: bytes,
-                          key: Optional[bytes]) -> str:
+    def _decrypt_password(
+        self, encrypted: bytes, key: Optional[bytes]
+    ) -> str:
         """
         Decrypt a single browser-stored password.
 
@@ -173,10 +265,13 @@ class BrowserExtractor:
             Bytes 3-14 : 12-byte AES-GCM nonce
             Bytes 15+  : ciphertext + 16-byte GCM auth tag
 
-        Older Chrome format uses raw Windows DPAPI encryption.
+        Older Chrome format:
+            Raw Windows DPAPI encrypted blob.
 
-        Returns empty string if decryption fails or if the
-        result is garbled / unreadable bytes.
+        Returns empty string if:
+            - Decryption fails
+            - Result contains box-drawing or symbol characters
+            - Result has no ASCII letters or digits
         """
         if not encrypted:
             return ""
@@ -190,18 +285,16 @@ class BrowserExtractor:
                 nonce      = encrypted[3:15]
                 ciphertext = encrypted[15:]
 
-                cipher   = AES.new(key, AES.MODE_GCM, nonce=nonce)
+                cipher    = AES.new(key, AES.MODE_GCM, nonce=nonce)
                 decrypted = cipher.decrypt(ciphertext)
 
                 # Remove the 16-byte GCM authentication tag
-                # that Chrome appends to the end
                 decrypted = decrypted[:-16]
 
                 decoded = decrypted.decode('utf-8', errors='replace')
 
-                # Validate the result is actually readable text
-                # and not garbled binary data
-                if not self._is_readable(decoded):
+                # Strict validation - reject garbled results
+                if not self._is_valid_password(decoded):
                     return ""
 
                 return decoded
@@ -211,12 +304,12 @@ class BrowserExtractor:
                 if not WIN32_AVAILABLE:
                     return ""
 
-                result = win32crypt.CryptUnprotectData(
+                result  = win32crypt.CryptUnprotectData(
                     encrypted, None, None, None, 0
                 )[1]
                 decoded = result.decode('utf-8', errors='replace')
 
-                if not self._is_readable(decoded):
+                if not self._is_valid_password(decoded):
                     return ""
 
                 return decoded
@@ -226,19 +319,17 @@ class BrowserExtractor:
 
     def _get_all_profiles(self, base_path: Path) -> List[str]:
         """
-        Find all profile folders inside a browser's User Data dir.
-        Returns names like: Default, Profile 1, Profile 2, etc.
+        Find all profile folders inside a browser User Data dir.
+        Always checks Default first, then Profile 1, Profile 2...
         """
         profiles = []
 
         if not base_path.exists():
             return profiles
 
-        # Always check Default first
         if (base_path / 'Default').exists():
             profiles.append('Default')
 
-        # Find all numbered profiles
         try:
             for item in sorted(base_path.iterdir()):
                 if not item.is_dir():
@@ -253,22 +344,22 @@ class BrowserExtractor:
 
         return profiles
 
-    def _extract_chromium(self, browser_name: str,
-                          base_path: Path) -> List[Dict]:
+    def _extract_chromium(
+        self, browser_name: str, base_path: Path
+    ) -> List[Dict]:
         """
         Extract saved passwords from ALL profiles of a
         Chromium-based browser.
 
-        Steps:
-        1. Get the shared AES key from Local State
-        2. Find every profile folder
-        3. Copy Login Data SQLite db to a temp file
-           (browser locks it while running)
-        4. Query the logins table
-        5. Decrypt each password, skip garbled results
+        For each profile:
+            1. Copy Login Data SQLite db to temp file
+               (browser locks the original while running)
+            2. Query the logins table
+            3. Decrypt each password
+            4. Skip any that fail validation
         """
-        results = []
-        key     = self._get_encryption_key(base_path)
+        results  = []
+        key      = self._get_encryption_key(base_path)
         profiles = self._get_all_profiles(base_path)
 
         if not profiles:
@@ -286,7 +377,6 @@ class BrowserExtractor:
             if not login_db.exists():
                 continue
 
-            # Copy to temp because browser locks the file
             tmp = tempfile.NamedTemporaryFile(
                 delete=False, suffix='.db'
             )
@@ -331,7 +421,7 @@ class BrowserExtractor:
 
                     password = self._decrypt_password(enc_pwd, key)
 
-                    # Skip empty or garbled passwords
+                    # Skip empty or garbled passwords entirely
                     if not password:
                         continue
 
@@ -369,7 +459,7 @@ class BrowserExtractor:
         """
         Extract credentials from all Firefox profiles.
         Full password decryption requires Mozilla NSS library.
-        We extract site and username where possible.
+        We extract site and attempt to decode username.
         """
         results = []
 
@@ -439,7 +529,8 @@ class BrowserExtractor:
     def _clean_url(self, url: str) -> str:
         """
         Extract just the domain from a full URL.
-        https://www.accounts.google.com/login -> accounts.google.com
+        https://www.accounts.google.com/login
+        -> accounts.google.com
         """
         if not url:
             return ''
@@ -452,69 +543,3 @@ class BrowserExtractor:
             return url.strip()
         except Exception:
             return url
-
-    def get_available_browsers(self) -> List[str]:
-        """
-        Return a list of browsers that are installed
-        and have at least one Login Data file.
-        """
-        available = []
-
-        for name, path in CHROMIUM_BROWSERS.items():
-            if not path.exists():
-                continue
-            profiles = self._get_all_profiles(path)
-            for p in profiles:
-                db = path / p / 'Login Data'
-                if db.exists():
-                    if name not in available:
-                        available.append(name)
-                    break
-
-        if FIREFOX_PATH.exists():
-            for p in FIREFOX_PATH.iterdir():
-                if p.is_dir() and (p / 'logins.json').exists():
-                    available.append('Firefox')
-                    break
-
-        return available
-
-    def get_profile_count(self, browser_name: str) -> int:
-        """Return the number of profiles found for a browser."""
-        base = CHROMIUM_BROWSERS.get(browser_name)
-        if not base or not base.exists():
-            return 0
-        return len(self._get_all_profiles(base))
-
-    def get_extraction_summary(self) -> dict:
-        """
-        Return a summary of browsers and profile counts
-        without extracting any passwords.
-        Shown to the user before they confirm the import.
-        """
-        summary = {}
-
-        for name, path in CHROMIUM_BROWSERS.items():
-            if not path.exists():
-                continue
-            profiles = self._get_all_profiles(path)
-            count    = len(profiles)
-            if count > 0:
-                summary[name] = {
-                    'profiles'     : count,
-                    'profile_names': profiles,
-                }
-
-        if FIREFOX_PATH.exists():
-            ff_profiles = [
-                p.name for p in FIREFOX_PATH.iterdir()
-                if p.is_dir() and
-                (p / 'logins.json').exists()
-            ]
-            if ff_profiles:
-                summary['Firefox'] = {
-                    'profiles'     : len(ff_profiles),
-                    'profile_names': ff_profiles,
-                }
-
-        return summary
