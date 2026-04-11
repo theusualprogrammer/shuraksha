@@ -1,5 +1,7 @@
+# -----------------------------------------------
 # Shuraksha - Real Vault Dashboard
-
+# File: src/ui/vault_dashboard.py
+# -----------------------------------------------
 
 import sys
 import os
@@ -29,8 +31,9 @@ except Exception:
     security           = None
     SECURITY_AVAILABLE = False
 
+# -----------------------------------------------
 # PATHS
-
+# -----------------------------------------------
 APP_DATA_DIR = Path(os.environ.get('APPDATA', '')) / 'Shuraksha'
 VAULT_DIR    = APP_DATA_DIR / 'vault'
 FILES_DIR    = VAULT_DIR / 'files'
@@ -39,22 +42,22 @@ CREDS_FILE   = VAULT_DIR / 'creds.dat'
 NOTES_FILE   = VAULT_DIR / 'notes.dat'
 LOG_FILE     = VAULT_DIR / 'access.log'
 
-
+# -----------------------------------------------
 # SETTINGS
-
+# -----------------------------------------------
 AUTO_LOCK_SECONDS = 300
 
-
+# -----------------------------------------------
 # DIMENSIONS
-
+# -----------------------------------------------
 WIN_W      = 1100
 WIN_H      = 720
 SIDEBAR_W  = 220
 TITLEBAR_H = 46
 
-
+# -----------------------------------------------
 # COLOURS
-
+# -----------------------------------------------
 C_BG       = "#060912"
 C_PANEL    = "#04060E"
 C_CARD     = "#080C18"
@@ -76,9 +79,9 @@ C_GREEN    = "#00CC66"
 C_GREEN_BG = "#001A0A"
 C_AMBER    = "#FF8800"
 
-
+# -----------------------------------------------
 # BUTTON STYLES
-
+# -----------------------------------------------
 BTN_PRIMARY = (
     f"QPushButton{{"
     f"  background-color:{C_CYAN};"
@@ -189,9 +192,9 @@ GLOBAL_STYLE = f"""
 """
 
 
-
+# -----------------------------------------------
 # HELPERS
-
+# -----------------------------------------------
 def mk(text, color=C_WHITE, size=13, bold=False,
        mono=False, wrap=False, align=None):
     l = QLabel(text)
@@ -233,9 +236,9 @@ def write_log(entry: str):
         pass
 
 
-
+# -----------------------------------------------
 # VAULT MANAGER
-
+# -----------------------------------------------
 class VaultManager:
     """
     Handles all encrypted file and data operations.
@@ -357,9 +360,9 @@ class VaultManager:
             return "// Could not read access log."
 
 
-
+# -----------------------------------------------
 # FILE ROW
-
+# -----------------------------------------------
 class FileRow(QWidget):
 
     export_requested = pyqtSignal(str)
@@ -442,9 +445,9 @@ class FileRow(QWidget):
         return f"{b/1024**3:.1f} GB"
 
 
-
+# -----------------------------------------------
 # CREDENTIAL ROW
-
+# -----------------------------------------------
 class CredRow(QWidget):
 
     delete_requested = pyqtSignal(int)
@@ -510,9 +513,12 @@ class CredRow(QWidget):
         self._pwd_visible = not self._pwd_visible
         if self._pwd_visible:
             self.pwd_lbl.setText(self._pwd_text)
+            # Use Segoe UI so all unicode characters
+            # in passwords render correctly including
+            # special symbols that Consolas cannot display
             self.pwd_lbl.setStyleSheet(
                 f"color:{C_CYAN};font-size:12px;"
-                f"font-family:'Consolas','Courier New',monospace;"
+                f"font-family:'Segoe UI','Arial',sans-serif;"
                 f"background:transparent;"
             )
             self.show_btn.setText("HIDE")
@@ -538,9 +544,9 @@ class CredRow(QWidget):
             )
 
 
-
+# -----------------------------------------------
 # VAULT DASHBOARD
-
+# -----------------------------------------------
 class VaultDashboard(QMainWindow):
     """
     The real encrypted vault dashboard.
@@ -578,9 +584,9 @@ class VaultDashboard(QMainWindow):
         write_log(f"VAULT_OPENED  operator:{self.username}")
         QTimer.singleShot(500, self._start_security)
 
-
-# SECURITY
-
+    # -----------------------------------------------
+    # SECURITY
+    # -----------------------------------------------
 
     def _start_security(self):
         try:
@@ -601,9 +607,9 @@ class VaultDashboard(QMainWindow):
         except Exception:
             pass
 
-
-# LAYOUT
-
+    # -----------------------------------------------
+    # LAYOUT
+    # -----------------------------------------------
 
     def _build(self):
         root = QWidget()
@@ -805,9 +811,9 @@ class VaultDashboard(QMainWindow):
         elif key == 'notes': self._load_notes()
         elif key == 'log':   self._load_log()
 
-
-# FILES SECTION
-
+    # -----------------------------------------------
+    # FILES SECTION
+    # -----------------------------------------------
 
     def _build_files_section(self):
         widget = QWidget()
@@ -952,8 +958,9 @@ class VaultDashboard(QMainWindow):
             except Exception as e:
                 self._err(f"Delete failed:\n{e}")
 
-# CREDENTIALS SECTION
-
+    # -----------------------------------------------
+    # CREDENTIALS SECTION
+    # -----------------------------------------------
 
     def _build_creds_section(self):
         widget = QWidget()
@@ -1112,18 +1119,12 @@ class VaultDashboard(QMainWindow):
             from src.browser.extractor import BrowserExtractor
 
             extractor = BrowserExtractor()
-
-            # Show summary first so user knows what
-            # will be scanned before starting
-            summary = extractor.get_extraction_summary()
+            summary   = extractor.get_extraction_summary()
 
             if not summary:
-                self._toast(
-                    "// No supported browsers found."
-                )
+                self._toast("// No supported browsers found.")
                 return
 
-            # Build readable summary message
             lines = ["Browsers and profiles found:\n"]
             for browser, info in summary.items():
                 count = info['profiles']
@@ -1160,17 +1161,13 @@ class VaultDashboard(QMainWindow):
             if box.exec() != QMessageBox.StandardButton.Yes:
                 return
 
-            self._toast(
-                "// Scanning all browser profiles..."
-            )
+            self._toast("// Scanning all browser profiles...")
 
-            # Extract all credentials from all profiles
             extracted = extractor.extract_all()
 
             if not extracted:
                 self._toast(
-                    "// No saved credentials found "
-                    "in any browser."
+                    "// No saved credentials found in any browser."
                 )
                 if extractor.errors:
                     self._err(
@@ -1180,7 +1177,6 @@ class VaultDashboard(QMainWindow):
                     )
                 return
 
-            # Deduplicate against existing vault credentials
             existing      = self.vault.load_creds()
             existing_keys = {
                 (c.get('site', ''), c.get('username', ''))
@@ -1206,12 +1202,10 @@ class VaultDashboard(QMainWindow):
 
             if not new_creds:
                 self._toast(
-                    "// All browser credentials already "
-                    "in vault. Nothing new."
+                    "// All browser credentials already in vault."
                 )
                 return
 
-            # Final confirmation with total count
             box2 = QMessageBox(self)
             box2.setWindowTitle("// CONFIRM IMPORT")
             box2.setText(
@@ -1240,13 +1234,11 @@ class VaultDashboard(QMainWindow):
                 existing.extend(new_creds)
                 self.vault.save_creds(existing)
                 write_log(
-                    f"BROWSER_IMPORT  "
-                    f"{len(new_creds)} credentials"
+                    f"BROWSER_IMPORT  {len(new_creds)} credentials"
                 )
                 self._reload_creds()
                 self._toast(
-                    f"// IMPORTED:  {len(new_creds)} "
-                    f"credential"
+                    f"// IMPORTED:  {len(new_creds)} credential"
                     f"{'s' if len(new_creds) != 1 else ''}"
                 )
 
@@ -1257,9 +1249,9 @@ class VaultDashboard(QMainWindow):
                 f"before importing."
             )
 
-
-#OTES SECTION
-
+    # -----------------------------------------------
+    # NOTES SECTION
+    # -----------------------------------------------
 
     def _build_notes_section(self):
         widget = QWidget()
@@ -1323,9 +1315,9 @@ class VaultDashboard(QMainWindow):
         except Exception as e:
             self._err(f"Failed to save notes:\n{e}")
 
-
-# LOG SECTION
-
+    # -----------------------------------------------
+    # LOG SECTION
+    # -----------------------------------------------
 
     def _build_log_section(self):
         widget = QWidget()
@@ -1389,9 +1381,9 @@ class VaultDashboard(QMainWindow):
         except Exception as e:
             self._err(f"Could not clear log:\n{e}")
 
-
-# STATUS BAR
-
+    # -----------------------------------------------
+    # STATUS BAR
+    # -----------------------------------------------
 
     def _build_statusbar(self):
         status = QWidget()
@@ -1414,9 +1406,9 @@ class VaultDashboard(QMainWindow):
 
         return status
 
-
-# UTILITY
-
+    # -----------------------------------------------
+    # UTILITY
+    # -----------------------------------------------
 
     def _toast(self, message: str):
         self.toast_lbl.setText(message)
@@ -1478,8 +1470,9 @@ class VaultDashboard(QMainWindow):
         super().keyPressEvent(event)
 
 
+# -----------------------------------------------
 # ENTRY POINT
-
+# -----------------------------------------------
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setStyle('Fusion')
