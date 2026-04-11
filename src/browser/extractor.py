@@ -1,4 +1,7 @@
+# -----------------------------------------------
 # Shuraksha - Browser Password Extractor
+# File: src/browser/extractor.py
+# -----------------------------------------------
 
 import os
 import re
@@ -7,7 +10,6 @@ import base64
 import sqlite3
 import shutil
 import tempfile
-import traceback
 from pathlib import Path
 from typing import List, Dict, Optional
 
@@ -23,20 +25,20 @@ try:
 except ImportError:
     CRYPTO_AVAILABLE = False
 
-
+# -----------------------------------------------
 # BROWSER PATHS
-
-LOCAL  = Path(os.environ.get('LOCALAPPDATA', ''))
-ROAM   = Path(os.environ.get('APPDATA', ''))
+# -----------------------------------------------
+LOCAL = Path(os.environ.get('LOCALAPPDATA', ''))
+ROAM  = Path(os.environ.get('APPDATA', ''))
 
 CHROMIUM_BROWSERS = {
-    'Chrome': LOCAL / 'Google'       / 'Chrome'         / 'User Data',
-    'Edge'  : LOCAL / 'Microsoft'    / 'Edge'            / 'User Data',
-    'Brave' : LOCAL / 'BraveSoftware'/ 'Brave-Browser'   / 'User Data',
-    'Opera' : ROAM  / 'Opera Software'/ 'Opera Stable',
-    'Vivaldi': LOCAL / 'Vivaldi'     / 'User Data',
-    'Chrome Beta': LOCAL / 'Google'  / 'Chrome Beta'     / 'User Data',
-    'Chrome Dev' : LOCAL / 'Google'  / 'Chrome Dev'      / 'User Data',
+    'Chrome'     : LOCAL / 'Google'       / 'Chrome'       / 'User Data',
+    'Edge'       : LOCAL / 'Microsoft'    / 'Edge'          / 'User Data',
+    'Brave'      : LOCAL / 'BraveSoftware'/ 'Brave-Browser' / 'User Data',
+    'Opera'      : ROAM  / 'Opera Software'/ 'Opera Stable',
+    'Vivaldi'    : LOCAL / 'Vivaldi'      / 'User Data',
+    'Chrome Beta': LOCAL / 'Google'       / 'Chrome Beta'   / 'User Data',
+    'Chrome Dev' : LOCAL / 'Google'       / 'Chrome Dev'    / 'User Data',
 }
 
 FIREFOX_PATH = ROAM / 'Mozilla' / 'Firefox' / 'Profiles'
@@ -46,6 +48,7 @@ class BrowserExtractor:
     """
     Extracts saved credentials from all installed browsers.
     Handles multiple profiles per browser correctly.
+    Skips garbled or unreadable passwords automatically.
     """
 
     def __init__(self):
@@ -55,6 +58,7 @@ class BrowserExtractor:
         """
         Extract credentials from all available browsers.
         Returns a combined deduplicated list.
+        Only includes passwords that decrypted cleanly.
         """
         results = []
         seen    = set()
@@ -93,14 +97,14 @@ class BrowserExtractor:
 
         return results
 
-
-# CHROMIUM
-
+    # -----------------------------------------------
+    # CHROMIUM
+    # -----------------------------------------------
 
     def _get_encryption_key(self, base_path: Path) -> Optional[bytes]:
         """
-        Extract the AES encryption key from Local State.
-        This key is used to decrypt all passwords in the browser.
+        Extract and decrypt the AES key from Local State.
+        This key decrypts all passwords stored by the browser.
         """
         if not WIN32_AVAILABLE or not CRYPTO_AVAILABLE:
             return None
@@ -113,18 +117,16 @@ class BrowserExtractor:
             with open(local_state, 'r', encoding='utf-8') as f:
                 state = json.load(f)
 
-            # The key is base64 encoded in os_crypt.encrypted_key
             b64_key       = state['os_crypt']['encrypted_key']
             encrypted_key = base64.b64decode(b64_key)
 
-            # First 5 bytes are the literal string 'DPAPI'
-            # Remove them before decrypting
+            # Remove the first 5 bytes which are the
+            # literal ASCII string 'DPAPI'
             encrypted_key = encrypted_key[5:]
 
             # Decrypt with Windows DPAPI
             key = win32crypt.CryptUnprotectData(
-                encrypted_key,
-                None, None, None, 0
+                encrypted_key, None, None, None, 0
             )[1]
 
             return key
@@ -132,24 +134,55 @@ class BrowserExtractor:
         except Exception:
             return None
 
+    def _is_readable(self, text: str) -> bool:
+        """
+        Check if a decrypted password string is
+        actually readable and not garbage bytes.
+
+        Returns True only if the string:
+          - Is not empty
+          - Has fewer than 20% unicode replacement chars
+          - Has at least 80% printable characters
+        """
+        if not text:
+            return False
+
+        # Too many replacement characters means bad decryption
+        replacement_ratio = text.count('\ufffd') / len(text)
+        if replacement_ratio > 0.2:
+            return False
+
+        # Too many non-printable characters means garbage
+        printable_count = sum(
+            1 for c in text
+            if c.isprintable() or c in (' ', '\t')
+        )
+        printable_ratio = printable_count / len(text)
+        if printable_ratio < 0.8:
+            return False
+
+        return True
+
     def _decrypt_password(self, encrypted: bytes,
                           key: Optional[bytes]) -> str:
         """
-        Decrypt a single password value.
+        Decrypt a single browser-stored password.
 
         Chrome 80+ format:
-            Bytes 0-2   : b'v10' or b'v11' prefix
-            Bytes 3-14  : 12-byte nonce
-            Bytes 15:-16: ciphertext
-            Last 16     : GCM auth tag (included in ciphertext)
+            Bytes 0-2  : b'v10', b'v11', or b'v20' prefix
+            Bytes 3-14 : 12-byte AES-GCM nonce
+            Bytes 15+  : ciphertext + 16-byte GCM auth tag
 
-        Older format uses raw DPAPI encryption.
+        Older Chrome format uses raw Windows DPAPI encryption.
+
+        Returns empty string if decryption fails or if the
+        result is garbled / unreadable bytes.
         """
         if not encrypted:
             return ""
 
         try:
-            # Chrome 80+ AES-GCM format
+            # Chrome 80+ AES-GCM encrypted format
             if encrypted[:3] in (b'v10', b'v11', b'v20'):
                 if not key or not CRYPTO_AVAILABLE:
                     return ""
@@ -158,21 +191,35 @@ class BrowserExtractor:
                 ciphertext = encrypted[15:]
 
                 cipher   = AES.new(key, AES.MODE_GCM, nonce=nonce)
-                password = cipher.decrypt(ciphertext)
+                decrypted = cipher.decrypt(ciphertext)
 
-                # Strip the 16-byte GCM tag from the end
-                password = password[:-16]
+                # Remove the 16-byte GCM authentication tag
+                # that Chrome appends to the end
+                decrypted = decrypted[:-16]
 
-                return password.decode('utf-8', errors='replace')
+                decoded = decrypted.decode('utf-8', errors='replace')
+
+                # Validate the result is actually readable text
+                # and not garbled binary data
+                if not self._is_readable(decoded):
+                    return ""
+
+                return decoded
 
             else:
-                # Older DPAPI format
+                # Older Chrome: raw DPAPI encryption
                 if not WIN32_AVAILABLE:
                     return ""
+
                 result = win32crypt.CryptUnprotectData(
                     encrypted, None, None, None, 0
                 )[1]
-                return result.decode('utf-8', errors='replace')
+                decoded = result.decode('utf-8', errors='replace')
+
+                if not self._is_readable(decoded):
+                    return ""
+
+                return decoded
 
         except Exception:
             return ""
@@ -181,7 +228,6 @@ class BrowserExtractor:
         """
         Find all profile folders inside a browser's User Data dir.
         Returns names like: Default, Profile 1, Profile 2, etc.
-        Also includes Guest Profile and System Profile if present.
         """
         profiles = []
 
@@ -198,10 +244,8 @@ class BrowserExtractor:
                 if not item.is_dir():
                     continue
                 name = item.name
-                # Profile 1, Profile 2, Profile 3...
                 if re.match(r'^Profile \d+$', name):
                     profiles.append(name)
-                # Some browsers use different naming
                 elif re.match(r'^Profile_\d+$', name):
                     profiles.append(name)
         except Exception:
@@ -218,36 +262,31 @@ class BrowserExtractor:
         Steps:
         1. Get the shared AES key from Local State
         2. Find every profile folder
-        3. For each profile, copy Login Data to a temp file
+        3. Copy Login Data SQLite db to a temp file
+           (browser locks it while running)
         4. Query the logins table
-        5. Decrypt each password
+        5. Decrypt each password, skip garbled results
         """
         results = []
-
-        # Get the decryption key (shared across all profiles)
-        key = self._get_encryption_key(base_path)
-
-        # Get all profiles
+        key     = self._get_encryption_key(base_path)
         profiles = self._get_all_profiles(base_path)
 
         if not profiles:
-            # Some browsers store Login Data directly in base_path
             if (base_path / 'Login Data').exists():
                 profiles = ['']
 
         for profile in profiles:
             if profile:
-                login_db = base_path / profile / 'Login Data'
+                login_db      = base_path / profile / 'Login Data'
                 profile_label = profile
             else:
-                login_db = base_path / 'Login Data'
+                login_db      = base_path / 'Login Data'
                 profile_label = 'Default'
 
             if not login_db.exists():
                 continue
 
-            # Copy the database to a temp file
-            # Chrome keeps Login Data locked while running
+            # Copy to temp because browser locks the file
             tmp = tempfile.NamedTemporaryFile(
                 delete=False, suffix='.db'
             )
@@ -255,22 +294,19 @@ class BrowserExtractor:
 
             try:
                 shutil.copy2(str(login_db), tmp.name)
-
                 conn   = sqlite3.connect(tmp.name)
                 cursor = conn.cursor()
 
                 try:
                     cursor.execute(
                         "SELECT origin_url, username_value, "
-                        "password_value, date_last_used, "
-                        "times_used "
+                        "password_value, date_last_used "
                         "FROM logins "
                         "WHERE username_value != '' "
                         "ORDER BY date_last_used DESC"
                     )
                     rows = cursor.fetchall()
                 except Exception:
-                    # Older schema without date_last_used
                     try:
                         cursor.execute(
                             "SELECT origin_url, username_value, "
@@ -279,7 +315,7 @@ class BrowserExtractor:
                             "WHERE username_value != ''"
                         )
                         rows = [
-                            (r[0], r[1], r[2], 0, 0)
+                            (r[0], r[1], r[2], 0)
                             for r in cursor.fetchall()
                         ]
                     except Exception:
@@ -295,13 +331,13 @@ class BrowserExtractor:
 
                     password = self._decrypt_password(enc_pwd, key)
 
+                    # Skip empty or garbled passwords
                     if not password:
                         continue
 
                     results.append({
                         'browser' : (
-                            f"{browser_name} "
-                            f"({profile_label})"
+                            f"{browser_name} ({profile_label})"
                             if profile_label != 'Default'
                             else browser_name
                         ),
@@ -325,22 +361,15 @@ class BrowserExtractor:
 
         return results
 
-
-# FIREFOX
-
+    # -----------------------------------------------
+    # FIREFOX
+    # -----------------------------------------------
 
     def _extract_firefox(self) -> List[Dict]:
         """
         Extract credentials from all Firefox profiles.
-
-        Firefox logins.json contains:
-            hostname       : the website URL
-            encryptedUsername : base64 encoded username
-            encryptedPassword : base64 encoded password
-
-        Full decryption requires Mozilla NSS library.
-        We extract the site and encoded data and attempt
-        basic decoding where possible.
+        Full password decryption requires Mozilla NSS library.
+        We extract site and username where possible.
         """
         results = []
 
@@ -370,11 +399,7 @@ class BrowserExtractor:
                     if not hostname:
                         continue
 
-                    # Try to get username from
-                    # encryptedUsername field
-                    enc_user = login.get(
-                        'encryptedUsername', ''
-                    )
+                    enc_user = login.get('encryptedUsername', '')
                     username = '(Firefox encrypted)'
 
                     if enc_user:
@@ -407,15 +432,14 @@ class BrowserExtractor:
 
         return results
 
-
-# UTILITIES
-
+    # -----------------------------------------------
+    # UTILITIES
+    # -----------------------------------------------
 
     def _clean_url(self, url: str) -> str:
         """
         Extract just the domain from a full URL.
-        https://www.accounts.google.com/login
-        -> accounts.google.com
+        https://www.accounts.google.com/login -> accounts.google.com
         """
         if not url:
             return ''
@@ -424,7 +448,7 @@ class BrowserExtractor:
             url = re.sub(r'^www\.', '', url)
             url = url.split('/')[0]
             url = url.split('?')[0]
-            url = url.split(':')[0]   # Remove port
+            url = url.split(':')[0]
             return url.strip()
         except Exception:
             return url
@@ -464,9 +488,9 @@ class BrowserExtractor:
 
     def get_extraction_summary(self) -> dict:
         """
-        Return a summary of what was found without
-        extracting passwords. Useful for showing the
-        user what will be imported before they confirm.
+        Return a summary of browsers and profile counts
+        without extracting any passwords.
+        Shown to the user before they confirm the import.
         """
         summary = {}
 
@@ -477,7 +501,7 @@ class BrowserExtractor:
             count    = len(profiles)
             if count > 0:
                 summary[name] = {
-                    'profiles': count,
+                    'profiles'     : count,
                     'profile_names': profiles,
                 }
 
@@ -489,8 +513,8 @@ class BrowserExtractor:
             ]
             if ff_profiles:
                 summary['Firefox'] = {
-                    'profiles': len(ff_profiles),
+                    'profiles'     : len(ff_profiles),
                     'profile_names': ff_profiles,
                 }
 
-        return summary  
+        return summary
